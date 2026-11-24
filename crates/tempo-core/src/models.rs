@@ -51,6 +51,18 @@ pub struct NewActivityLog {
     pub ended_at: i64,
 }
 
+/// Application candidate surfaced in the UI picker (currently running desktop windows
+/// merged with recently recorded processes from `activity_logs`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoverableApp {
+    pub process_name: String,
+    pub window_title: Option<String>,
+    pub is_running: bool,
+    pub last_seen_at: Option<i64>,
+    pub total_duration_ms: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncStatus {
@@ -281,6 +293,29 @@ impl AppSettings {
                 .map(ToOwned::to_owned)
                 .collect()
         };
+        let clean_process_list = |items: &[String]| -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            for raw in items {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let key = crate::tracker::normalize_process_match_key(trimmed);
+                if let Some(existing) = out
+                    .iter_mut()
+                    .find(|item| crate::tracker::normalize_process_match_key(item) == key)
+                {
+                    if !existing.to_lowercase().ends_with(".exe")
+                        && trimmed.to_lowercase().ends_with(".exe")
+                    {
+                        *existing = trimmed.to_owned();
+                    }
+                } else {
+                    out.push(trimmed.to_owned());
+                }
+            }
+            out
+        };
         let clean_opt = |value: &Option<String>| -> Option<String> {
             value
                 .as_deref()
@@ -293,9 +328,9 @@ impl AppSettings {
             poll_interval_ms: self.poll_interval_ms.clamp(250, 60_000),
             idle_threshold_ms: self.idle_threshold_ms.clamp(5_000, 86_400_000),
             sleep_gap_threshold_ms: self.sleep_gap_threshold_ms.clamp(1_000, 3_600_000),
-            redacted_processes: clean_list(&self.redacted_processes),
+            redacted_processes: clean_process_list(&self.redacted_processes),
             redacted_title_keywords: clean_list(&self.redacted_title_keywords),
-            excluded_processes: clean_list(&self.excluded_processes),
+            excluded_processes: clean_process_list(&self.excluded_processes),
             sync_mode: self.sync_mode.clone(),
             fallback_project_id: clean_opt(&self.fallback_project_id),
             stop_timer_on_quit: self.stop_timer_on_quit,

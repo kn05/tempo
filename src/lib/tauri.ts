@@ -4,6 +4,7 @@ import type {
   ActivityLog,
   AppSettings,
   CreateTimeEntryInput,
+  DiscoverableApp,
   IdleResolutionInput,
   IdleResolutionResult,
   IdleReturnPrompt,
@@ -26,6 +27,7 @@ import type {
   UpdateTimeEntryInput,
 } from "../types";
 import { parseQuickEntry } from "./quickEntry";
+import { dedupeProcessList, matchesAnyProcess, normalizeProcessMatchKey } from "./time";
 
 export const EVENT_IDLE_RETURN = "tempo://idle-return";
 export const EVENT_TIMER_CHANGED = "tempo://timer-changed";
@@ -676,11 +678,74 @@ export async function listActivityLogs(
   }
   const state = getPreviewState();
   const minDur = Math.max(0, minDurationMs ?? 0);
+  const excluded = state.settings.excludedProcesses;
   return state.activityLogs
     .filter(
-      (log) => log.endedAt >= fromMs && log.startedAt <= toMs && log.endedAt - log.startedAt >= minDur,
+      (log) =>
+        log.endedAt >= fromMs &&
+        log.startedAt <= toMs &&
+        log.endedAt - log.startedAt >= minDur &&
+        (log.isIdle || !matchesAnyProcess(excluded, log.processName)),
     )
     .sort((a, b) => a.startedAt - b.startedAt);
+}
+
+export async function listDiscoverableApps(): Promise<DiscoverableApp[]> {
+  if (isTauriRuntime()) {
+    return invoke<DiscoverableApp[]>("list_discoverable_apps");
+  }
+  const state = getPreviewState();
+  const recentByKey = new Map<string, DiscoverableApp>();
+  for (const log of state.activityLogs) {
+    if (log.isIdle) continue;
+    const key = normalizeProcessMatchKey(log.processName);
+    if (!key || key === "idle" || key === "unknown") continue;
+    const dur = Math.max(0, log.endedAt - log.startedAt);
+    const prev = recentByKey.get(key);
+    if (prev) {
+      prev.totalDurationMs += dur;
+      if (log.endedAt > (prev.lastSeenAt ?? 0)) {
+        prev.lastSeenAt = log.endedAt;
+        if (log.windowTitle && log.windowTitle !== "[Redacted]") {
+          prev.windowTitle = log.windowTitle;
+        }
+      }
+    } else {
+      recentByKey.set(key, {
+        processName: log.processName,
+        windowTitle: log.windowTitle && log.windowTitle !== "[Redacted]" ? log.windowTitle : null,
+        isRunning: false,
+        lastSeenAt: log.endedAt,
+        totalDurationMs: dur,
+      });
+    }
+  }
+
+  const simulatedRunning: { processName: string; windowTitle: string }[] = [
+    { processName: "Code.exe", windowTitle: "tempo (main) — SettingsView.tsx" },
+    { processName: "chrome.exe", windowTitle: "Tauri v2 Docs — Google Chrome" },
+    { processName: "Discord.exe", windowTitle: "#general — Discord" },
+    { processName: "Slack.exe", windowTitle: "#frontend-ux — Slack" },
+  ];
+
+  const out: DiscoverableApp[] = [];
+  for (const app of simulatedRunning) {
+    const key = normalizeProcessMatchKey(app.processName);
+    const recent = recentByKey.get(key);
+    recentByKey.delete(key);
+    out.push({
+      processName: app.processName,
+      windowTitle: app.windowTitle,
+      isRunning: true,
+      lastSeenAt: recent?.lastSeenAt ?? null,
+      totalDurationMs: recent?.totalDurationMs ?? 0,
+    });
+  }
+
+  const remaining = [...recentByKey.values()].sort(
+    (a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0) || b.totalDurationMs - a.totalDurationMs,
+  );
+  return [...out, ...remaining];
 }
 
 export async function submitPresenceHeartbeat(payload: PresenceOverride): Promise<void> {
@@ -994,6 +1059,8 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   const state = getPreviewState();
   const clean: AppSettings = {
     ...settings,
+    redactedProcesses: dedupeProcessList(settings.redactedProcesses),
+    excludedProcesses: dedupeProcessList(settings.excludedProcesses),
     shortcutToggleTimer: settings.shortcutToggleTimer?.trim() || null,
     shortcutQuickEntry: settings.shortcutQuickEntry?.trim() || null,
   };

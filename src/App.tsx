@@ -23,6 +23,7 @@ import {
   getShortcutStatus,
   getTickTickStatus,
   listActivityLogs,
+  listDiscoverableApps,
   listTags,
   listTickTickProjects,
   listTickTickTasks,
@@ -46,11 +47,18 @@ import {
   updateTimeEntry,
   upsertTag,
 } from "./lib/tauri";
-import { getDayRangeMs } from "./lib/time";
+import {
+  cleanProcessLabel,
+  dedupeProcessList,
+  getDayRangeMs,
+  matchesAnyProcess,
+  processNameMatches,
+} from "./lib/time";
 import type {
   ActivityLog,
   AppSettings,
   CreateTimeEntryInput,
+  DiscoverableApp,
   IdleResolutionAction,
   IdleReturnPrompt,
   NavTab,
@@ -81,9 +89,9 @@ function buildSettingsDraft(loaded: AppSettings): SettingsDraft {
     pollIntervalMs: String(loaded.pollIntervalMs),
     idleThresholdMin: String(Math.round(loaded.idleThresholdMs / 60_000)),
     sleepGapSec: String(Math.round(loaded.sleepGapThresholdMs / 1_000)),
-    redactedProcesses: loaded.redactedProcesses.join(", "),
+    redactedProcesses: [...loaded.redactedProcesses],
     redactedTitleKeywords: loaded.redactedTitleKeywords.join(", "),
-    excludedProcesses: loaded.excludedProcesses.join(", "),
+    excludedProcesses: [...loaded.excludedProcesses],
     syncMode: loaded.syncMode,
     fallbackProjectId: loaded.fallbackProjectId ?? "",
     stopTimerOnQuit: loaded.stopTimerOnQuit,
@@ -96,6 +104,12 @@ function buildSettingsDraft(loaded: AppSettings): SettingsDraft {
     ticktickOauthClientId: loaded.ticktickOauthClientId ?? "",
     ticktickOauthRedirectPort: loaded.ticktickOauthRedirectPort ?? 18492,
   };
+}
+
+interface ToastState {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export default function App() {
@@ -117,22 +131,44 @@ export default function App() {
   const [settingsDraft, setSettingsDraft] = useState<SettingsDraft | null>(null);
   const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus | null>(null);
   const [settingsSavedIndicator, setSettingsSavedIndicator] = useState(false);
+  const [discoverableApps, setDiscoverableApps] = useState<DiscoverableApp[]>([]);
+  const [loadingDiscoverableApps, setLoadingDiscoverableApps] = useState(false);
 
   const [idlePrompt, setIdlePrompt] = useState<IdleReturnPrompt | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const timerInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
 
-  const showToast = useCallback((message: string) => {
-    setToastMsg(message);
-    if (toastTimerRef.current !== null) {
-      window.clearTimeout(toastTimerRef.current);
+  const showToast = useCallback(
+    (message: string, options?: { actionLabel?: string; onAction?: () => void; durationMs?: number }) => {
+      setToast({
+        message,
+        actionLabel: options?.actionLabel,
+        onAction: options?.onAction,
+      });
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      const timeoutMs = options?.durationMs ?? (options?.onAction ? 5_500 : 3_500);
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, timeoutMs);
+    },
+    [],
+  );
+
+  const refreshDiscoverableApps = useCallback(async () => {
+    setLoadingDiscoverableApps(true);
+    try {
+      const apps = await listDiscoverableApps();
+      setDiscoverableApps(apps);
+    } catch {
+      // Keep previous list if scan fails.
+    } finally {
+      setLoadingDiscoverableApps(false);
     }
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMsg(null);
-      toastTimerRef.current = null;
-    }, 3_500);
   }, []);
 
   const hydrateSettingsDraft = useCallback((loaded: AppSettings) => {
@@ -200,6 +236,12 @@ export default function App() {
     if (!settings) return;
     void refreshTimelineForDate(timelineDate, settings.timelineMinDurationMs);
   }, [timelineDate, settings, refreshTimelineForDate]);
+
+  useEffect(() => {
+    if (activeTab === "settings") {
+      void refreshDiscoverableApps();
+    }
+  }, [activeTab, refreshDiscoverableApps]);
 
   useEffect(() => {
     let disposed = false;
@@ -424,6 +466,38 @@ export default function App() {
     await refresh();
   }
 
+  async function handleExcludeProcess(processName: string) {
+    if (!settings) return;
+    if (matchesAnyProcess(settings.excludedProcesses, processName)) return;
+
+    const nextExcluded = dedupeProcessList([...settings.excludedProcesses, processName]);
+    const saved = await updateSettings({
+      ...settings,
+      excludedProcesses: nextExcluded,
+    });
+    hydrateSettingsDraft(saved);
+    await refreshTimelineForDate(timelineDate, saved.timelineMinDurationMs);
+
+    const label = cleanProcessLabel(processName);
+    showToast(`${label} 수집 제외됨`, {
+      actionLabel: "실행 취소",
+      onAction: () => {
+        void (async () => {
+          const latest = await getSettings();
+          const restored = await updateSettings({
+            ...latest,
+            excludedProcesses: latest.excludedProcesses.filter(
+              (p) => !processNameMatches(p, processName),
+            ),
+          });
+          hydrateSettingsDraft(restored);
+          await refreshTimelineForDate(timelineDate, restored.timelineMinDurationMs);
+          showToast(`${label} 제외 해제됨`);
+        })();
+      },
+    });
+  }
+
   async function handleSaveSettings(event: FormEvent) {
     event.preventDefault();
     if (!settingsDraft) return;
@@ -431,9 +505,9 @@ export default function App() {
       pollIntervalMs: Number.parseInt(settingsDraft.pollIntervalMs, 10) || 2_000,
       idleThresholdMs: Math.max(1, Number.parseFloat(settingsDraft.idleThresholdMin) || 5) * 60_000,
       sleepGapThresholdMs: Math.max(1, Number.parseInt(settingsDraft.sleepGapSec, 10) || 10) * 1_000,
-      redactedProcesses: parseCsvList(settingsDraft.redactedProcesses),
+      redactedProcesses: dedupeProcessList(settingsDraft.redactedProcesses),
       redactedTitleKeywords: parseCsvList(settingsDraft.redactedTitleKeywords),
-      excludedProcesses: parseCsvList(settingsDraft.excludedProcesses),
+      excludedProcesses: dedupeProcessList(settingsDraft.excludedProcesses),
       syncMode: settingsDraft.syncMode,
       fallbackProjectId: settingsDraft.fallbackProjectId.trim() || null,
       stopTimerOnQuit: settingsDraft.stopTimerOnQuit,
@@ -526,7 +600,9 @@ export default function App() {
               tags={tags}
               status={status}
               minDurationMs={settings?.timelineMinDurationMs ?? 0}
+              excludedProcesses={settings?.excludedProcesses ?? []}
               onRefresh={refresh}
+              onExcludeProcess={handleExcludeProcess}
               onCreateEntry={handleCreateEntry}
               onUpdateEntry={handleUpdateEntry}
               onDeleteEntry={handleDeleteEntry}
@@ -560,12 +636,15 @@ export default function App() {
               projects={projects}
               shortcutStatus={shortcutStatus}
               ticktickStatus={ticktickStatus}
+              discoverableApps={discoverableApps}
+              loadingDiscoverableApps={loadingDiscoverableApps}
               runtimeLabel={runtimeLabel}
               savedIndicator={settingsSavedIndicator}
               onChangeDraft={setSettingsDraft}
               onSubmit={handleSaveSettings}
               onResetDraft={() => setSettingsDraft(buildSettingsDraft(settings))}
               onOpenTickTick={() => setActiveTab("ticktick")}
+              onRefreshDiscoverableApps={() => void refreshDiscoverableApps()}
             />
           )}
         </main>
@@ -573,12 +652,25 @@ export default function App() {
 
       {idlePrompt && <IdleReturnModal prompt={idlePrompt} onResolve={handleResolveIdle} />}
 
-      {toastMsg && (
+      {toast && (
         <div className="fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-2.5 rounded-full border border-white/[0.12] bg-[#16161f]/95 py-2 pl-4 pr-2.5 text-xs font-medium text-zinc-200 shadow-2xl shadow-black/70 backdrop-blur-xl">
-          <span>{toastMsg}</span>
+          <span>{toast.message}</span>
+          {toast.actionLabel && toast.onAction && (
+            <button
+              type="button"
+              onClick={() => {
+                const fn = toast.onAction;
+                setToast(null);
+                fn?.();
+              }}
+              className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-300 transition-colors hover:bg-indigo-500/35 hover:text-indigo-100"
+            >
+              {toast.actionLabel}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setToastMsg(null)}
+            onClick={() => setToast(null)}
             className="rounded-full p-1 text-zinc-500 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
           >
             <X className="h-3 w-3" />

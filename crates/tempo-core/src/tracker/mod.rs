@@ -3,9 +3,11 @@ mod windows;
 #[cfg(not(target_os = "windows"))]
 mod stub;
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
-use crate::models::{AppSettings, NewActivityLog};
+use crate::models::{AppSettings, DiscoverableApp, NewActivityLog};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -16,9 +18,23 @@ pub struct ActiveWindowInfo {
     pub metadata_json: Option<String>,
 }
 
+/// Snapshot of a currently visible desktop application window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppInfo {
+    pub process_name: String,
+    pub window_title: Option<String>,
+}
+
 /// Platform-abstracted foreground window tracker.
 pub trait ActivityTracker: Send + Sync {
     fn current_window(&self) -> Option<ActiveWindowInfo>;
+
+    /// Returns currently visible top-level desktop applications (deduplicated per process,
+    /// ordered by window Z-order from most recent to oldest).
+    fn running_apps(&self) -> Vec<RunningAppInfo> {
+        Vec::new()
+    }
 }
 
 /// Platform-abstracted user input idle detector.
@@ -71,6 +87,153 @@ pub(crate) fn is_uwp_application_frame_host(process_name: &str) -> bool {
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub(crate) fn compute_win32_idle_elapsed_ms(now_tick: u32, last_input_tick: u32) -> u64 {
     u64::from(now_tick.wrapping_sub(last_input_tick))
+}
+
+/// Normalizes a process name for matching by trimming whitespace, lowercasing,
+/// and stripping an optional trailing `.exe` extension (e.g. `"Discord.exe"` -> `"discord"`).
+pub fn normalize_process_match_key(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let lowered = trimmed.to_lowercase();
+    let stripped = lowered.strip_suffix(".exe").unwrap_or(&lowered);
+    if stripped.is_empty() {
+        lowered
+    } else {
+        stripped.to_string()
+    }
+}
+
+/// Returns `true` when `rule` matches `process_name`, ignoring case and an optional `.exe` suffix.
+///
+/// Matches the executable stem rather than arbitrary substrings so `"Code"` matches `"Code.exe"`
+/// without falsely matching `"CodeHelper.exe"`.
+pub fn process_name_matches(rule: &str, process_name: &str) -> bool {
+    let rule_key = normalize_process_match_key(rule);
+    if rule_key.is_empty() {
+        return false;
+    }
+    let actual_key = normalize_process_match_key(process_name);
+    !actual_key.is_empty() && rule_key == actual_key
+}
+
+/// Returns `true` if any rule in `rules` matches `process_name`.
+pub fn matches_any_process(rules: &[String], process_name: &str) -> bool {
+    rules
+        .iter()
+        .any(|rule| process_name_matches(rule, process_name))
+}
+
+/// Merges currently visible desktop apps with recently recorded apps from SQLite into a
+/// deduplicated list: running apps first (in window Z-order), followed by non-running recent apps
+/// sorted by recency and total duration.
+pub fn merge_discoverable_apps(
+    running: Vec<RunningAppInfo>,
+    recent: Vec<DiscoverableApp>,
+) -> Vec<DiscoverableApp> {
+    let is_ignorable_name = |name: &str| {
+        let key = normalize_process_match_key(name);
+        key.is_empty() || key == "idle" || key == "unknown"
+    };
+
+    let mut recent_by_key: HashMap<String, DiscoverableApp> = HashMap::new();
+    for item in recent {
+        if is_ignorable_name(&item.process_name) {
+            continue;
+        }
+        let key = normalize_process_match_key(&item.process_name);
+        match recent_by_key.get_mut(&key) {
+            Some(existing) => {
+                existing.total_duration_ms += item.total_duration_ms.max(0);
+                if item.last_seen_at > existing.last_seen_at {
+                    existing.last_seen_at = item.last_seen_at;
+                    if item
+                        .window_title
+                        .as_deref()
+                        .is_some_and(|t| !t.trim().is_empty())
+                    {
+                        existing.window_title = item.window_title;
+                    }
+                } else if existing.window_title.is_none() {
+                    existing.window_title = item.window_title;
+                }
+                if !existing.process_name.to_lowercase().ends_with(".exe")
+                    && item.process_name.to_lowercase().ends_with(".exe")
+                {
+                    existing.process_name = item.process_name;
+                }
+            }
+            None => {
+                recent_by_key.insert(
+                    key,
+                    DiscoverableApp {
+                        process_name: item.process_name.trim().to_string(),
+                        window_title: item
+                            .window_title
+                            .map(|t| t.trim().to_string())
+                            .filter(|t| !t.is_empty()),
+                        is_running: false,
+                        last_seen_at: item.last_seen_at,
+                        total_duration_ms: item.total_duration_ms.max(0),
+                    },
+                );
+            }
+        }
+    }
+
+    let mut out: Vec<DiscoverableApp> = Vec::new();
+    let mut seen_running: HashMap<String, usize> = HashMap::new();
+
+    for app in running {
+        if is_ignorable_name(&app.process_name) {
+            continue;
+        }
+        let trimmed_proc = app.process_name.trim().to_string();
+        let trimmed_title = app
+            .window_title
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty());
+        let key = normalize_process_match_key(&trimmed_proc);
+
+        if let Some(&idx) = seen_running.get(&key) {
+            if out[idx].window_title.is_none() && trimmed_title.is_some() {
+                out[idx].window_title = trimmed_title;
+            }
+            continue;
+        }
+
+        let recent_entry = recent_by_key.remove(&key);
+        let (last_seen_at, total_duration_ms, fallback_title) = match recent_entry {
+            Some(r) => (r.last_seen_at, r.total_duration_ms, r.window_title),
+            None => (None, 0, None),
+        };
+
+        let idx = out.len();
+        seen_running.insert(key, idx);
+        out.push(DiscoverableApp {
+            process_name: trimmed_proc,
+            window_title: trimmed_title.or(fallback_title),
+            is_running: true,
+            last_seen_at,
+            total_duration_ms,
+        });
+    }
+
+    let mut remaining_recent: Vec<DiscoverableApp> = recent_by_key.into_values().collect();
+    remaining_recent.sort_by(|a, b| {
+        b.last_seen_at
+            .cmp(&a.last_seen_at)
+            .then_with(|| b.total_duration_ms.cmp(&a.total_duration_ms))
+            .then_with(|| {
+                a.process_name
+                    .to_lowercase()
+                    .cmp(&b.process_name.to_lowercase())
+            })
+    });
+
+    out.extend(remaining_recent);
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -166,11 +329,7 @@ impl ActivityAggregator {
                 is_idle: true,
             }
         } else if let Some(info) = window {
-            let excluded = self
-                .config
-                .excluded_processes
-                .iter()
-                .any(|p| p.eq_ignore_ascii_case(&info.process_name));
+            let excluded = matches_any_process(&self.config.excluded_processes, &info.process_name);
             if excluded {
                 // Break continuity so returning to a prior app does not swallow excluded time.
                 self.current_key = None;
@@ -178,11 +337,8 @@ impl ActivityAggregator {
                 return AggregationAction::Ignore;
             }
 
-            let redacted_by_process = self
-                .config
-                .redacted_processes
-                .iter()
-                .any(|p| p.eq_ignore_ascii_case(&info.process_name));
+            let redacted_by_process =
+                matches_any_process(&self.config.redacted_processes, &info.process_name);
             let redacted_by_keyword = info.window_title.as_deref().is_some_and(|title| {
                 let title_lower = title.to_lowercase();
                 self.config
@@ -372,5 +528,119 @@ mod tests {
         // 32-bit tick wraparound (u32::MAX -> 100 => 101 ms elapsed)
         assert_eq!(compute_win32_idle_elapsed_ms(100, u32::MAX), 101);
         assert_eq!(compute_win32_idle_elapsed_ms(5_000, 1_500), 3_500);
+    }
+
+    #[test]
+    fn matches_process_names_case_and_exe_insensitively_without_substring_false_positives() {
+        assert!(process_name_matches("Discord", "Discord.exe"));
+        assert!(process_name_matches("discord.exe", "Discord.exe"));
+        assert!(process_name_matches("DISCORD.EXE", "Discord"));
+        assert!(process_name_matches("  Discord  ", "discord.exe"));
+        assert!(process_name_matches("tempo-dev", "tempo-dev"));
+        assert!(!process_name_matches("Code", "CodeHelper.exe"));
+        assert!(!process_name_matches("", "Discord.exe"));
+        assert!(!process_name_matches("   ", "Discord.exe"));
+
+        let mut agg = ActivityAggregator::new(AggregatorConfig {
+            excluded_processes: vec!["Discord".into()],
+            redacted_processes: vec!["Bitwarden".into()],
+            ..Default::default()
+        });
+
+        let discord = agg.observe(
+            1_000,
+            Some(ActiveWindowInfo {
+                source: "win_api".into(),
+                process_name: "Discord.exe".into(),
+                window_title: Some("#general — Discord".into()),
+                metadata_json: None,
+            }),
+            0,
+        );
+        assert_eq!(discord, AggregationAction::Ignore);
+
+        let bitwarden = agg.observe(
+            3_000,
+            Some(ActiveWindowInfo {
+                source: "win_api".into(),
+                process_name: "Bitwarden.exe".into(),
+                window_title: Some("Vault".into()),
+                metadata_json: None,
+            }),
+            0,
+        );
+        assert!(matches!(
+            bitwarden,
+            AggregationAction::StartNew(log) if log.window_title.as_deref() == Some("[Redacted]")
+        ));
+    }
+
+    #[test]
+    fn merges_running_and_recent_discoverable_apps_cleanly() {
+        let running = vec![
+            RunningAppInfo {
+                process_name: "Discord.exe".into(),
+                window_title: Some("#general — Discord".into()),
+            },
+            RunningAppInfo {
+                process_name: "Code.exe".into(),
+                window_title: Some("tempo — Visual Studio Code".into()),
+            },
+            // Duplicate running window with different casing must deduplicate
+            RunningAppInfo {
+                process_name: "discord.exe".into(),
+                window_title: Some("Voice Call".into()),
+            },
+        ];
+        let recent = vec![
+            DiscoverableApp {
+                process_name: "Discord.exe".into(),
+                window_title: Some("Old DM".into()),
+                is_running: false,
+                last_seen_at: Some(50_000),
+                total_duration_ms: 120_000,
+            },
+            DiscoverableApp {
+                process_name: "Slack.exe".into(),
+                window_title: Some("#dev — Slack".into()),
+                is_running: false,
+                last_seen_at: Some(40_000),
+                total_duration_ms: 60_000,
+            },
+            DiscoverableApp {
+                process_name: "Figma.exe".into(),
+                window_title: Some("Design".into()),
+                is_running: false,
+                last_seen_at: Some(90_000),
+                total_duration_ms: 30_000,
+            },
+            DiscoverableApp {
+                process_name: "idle".into(),
+                window_title: None,
+                is_running: false,
+                last_seen_at: Some(99_000),
+                total_duration_ms: 10_000,
+            },
+        ];
+
+        let merged = merge_discoverable_apps(running, recent);
+        assert_eq!(merged.len(), 4);
+
+        // Running apps appear first in Z-order with live window title and merged historical stats.
+        assert_eq!(merged[0].process_name, "Discord.exe");
+        assert!(merged[0].is_running);
+        assert_eq!(merged[0].window_title.as_deref(), Some("#general — Discord"));
+        assert_eq!(merged[0].last_seen_at, Some(50_000));
+        assert_eq!(merged[0].total_duration_ms, 120_000);
+
+        assert_eq!(merged[1].process_name, "Code.exe");
+        assert!(merged[1].is_running);
+        assert_eq!(merged[1].last_seen_at, None);
+
+        // Non-running recent apps follow sorted by last_seen_at DESC.
+        assert_eq!(merged[2].process_name, "Figma.exe");
+        assert!(!merged[2].is_running);
+        assert_eq!(merged[3].process_name, "Slack.exe");
+        assert!(!merged[3].is_running);
     }
 }

@@ -21,6 +21,8 @@ pub use ticktick::{
     DEFAULT_SYNC_WORKER_INTERVAL_SECS,
 };
 pub use tracker::{
-    create_platform_idle_detector, create_platform_tracker, ActiveWindowInfo, ActivityAggregator,
-    ActivityTracker, AggregationAction, AggregatorConfig, IdleDetector,
+    create_platform_idle_detector, create_platform_tracker, matches_any_process,
+    merge_discoverable_apps, normalize_process_match_key, process_name_matches, ActiveWindowInfo,
+    ActivityAggregator, ActivityTracker, AggregationAction, AggregatorConfig, IdleDetector,
+    RunningAppInfo,
 };

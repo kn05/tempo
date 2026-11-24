@@ -240,6 +240,50 @@ export function cleanProcessLabel(processName: string): string {
 }
 
 /**
+ * Normalizes a process name for matching (trimmed, lowercased, optional trailing `.exe` removed).
+ * Mirrors `tempo_core::normalize_process_match_key`.
+ */
+export function normalizeProcessMatchKey(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  const lowered = trimmed.toLowerCase();
+  const stripped = lowered.endsWith(".exe") ? lowered.slice(0, -4) : lowered;
+  return stripped || lowered;
+}
+
+/**
+ * Returns true when `rule` matches `processName`, ignoring case and an optional `.exe` suffix.
+ */
+export function processNameMatches(rule: string, processName: string): boolean {
+  const ruleKey = normalizeProcessMatchKey(rule);
+  if (!ruleKey) return false;
+  const actualKey = normalizeProcessMatchKey(processName);
+  return actualKey.length > 0 && ruleKey === actualKey;
+}
+
+export function matchesAnyProcess(rules: string[], processName: string): boolean {
+  return rules.some((rule) => processNameMatches(rule, processName));
+}
+
+export function dedupeProcessList(items: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of items) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = normalizeProcessMatchKey(trimmed);
+    const existingIdx = out.findIndex((item) => normalizeProcessMatchKey(item) === key);
+    if (existingIdx !== -1) {
+      if (!out[existingIdx].toLowerCase().endsWith(".exe") && trimmed.toLowerCase().endsWith(".exe")) {
+        out[existingIdx] = trimmed;
+      }
+    } else {
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
+
+/**
  * Generates a helpful default Time Entry description from a set of selected activity logs
  * by picking the dominant non-idle span (preferring rich window title or workspace metadata).
  */

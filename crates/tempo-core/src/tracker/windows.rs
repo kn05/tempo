@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM};
 use windows::Win32::System::SystemInformation::GetTickCount;
@@ -7,17 +9,28 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GetClassNameW, GetForegroundWindow, GetWindowTextLengthW, GetWindowTextW,
-    GetWindowThreadProcessId,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindowLongW,
+    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, GWL_EXSTYLE,
+    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 use super::{
     compute_win32_idle_elapsed_ms, extract_executable_name, is_uwp_application_frame_host,
-    ActiveWindowInfo, ActivityTracker, IdleDetector,
+    normalize_process_match_key, ActiveWindowInfo, ActivityTracker, IdleDetector, RunningAppInfo,
 };
 
 const MAX_WINDOW_TITLE_LEN: usize = 4096;
 const UWP_CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
+
+const SHELL_NOISE_PROCESSES: &[&str] = &[
+    "textinputhost.exe",
+    "shellexperiencehost.exe",
+    "startmenuexperiencehost.exe",
+    "searchhost.exe",
+    "searchapp.exe",
+    "lockapp.exe",
+    "systemsettingsbroker.exe",
+];
 
 pub struct WindowsActivityTracker;
 
@@ -58,6 +71,95 @@ impl ActivityTracker for WindowsActivityTracker {
             })
         }
     }
+
+    fn running_apps(&self) -> Vec<RunningAppInfo> {
+        let mut state = RunningEnumState {
+            seen_keys: HashSet::new(),
+            apps: Vec::new(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(enum_running_window_proc),
+                LPARAM(&mut state as *mut RunningEnumState as isize),
+            );
+        }
+        state.apps
+    }
+}
+
+struct RunningEnumState {
+    seen_keys: HashSet<String>,
+    apps: Vec<RunningAppInfo>,
+}
+
+unsafe extern "system" fn enum_running_window_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    if !IsWindowVisible(hwnd).as_bool() {
+        return BOOL(1);
+    }
+
+    let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+    let is_tool_window = (ex_style & WS_EX_TOOLWINDOW.0) != 0;
+    let is_app_window = (ex_style & WS_EX_APPWINDOW.0) != 0;
+    if is_tool_window && !is_app_window {
+        return BOOL(1);
+    }
+
+    let Some(title) = read_window_title(hwnd)
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+    else {
+        return BOOL(1);
+    };
+
+    if title.eq_ignore_ascii_case("Program Manager")
+        || title.eq_ignore_ascii_case("Windows Input Experience")
+    {
+        return BOOL(1);
+    }
+
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == 0 {
+        return BOOL(1);
+    }
+
+    let Some(mut process_name) = query_process_name(pid) else {
+        return BOOL(1);
+    };
+
+    if is_uwp_application_frame_host(&process_name) {
+        if let Some(child_pid) = resolve_uwp_child_pid(hwnd, pid) {
+            if let Some(child_name) = query_process_name(child_pid) {
+                process_name = child_name;
+            } else {
+                return BOOL(1);
+            }
+        } else {
+            return BOOL(1);
+        }
+    }
+
+    if SHELL_NOISE_PROCESSES
+        .iter()
+        .any(|noise| process_name.eq_ignore_ascii_case(noise))
+    {
+        return BOOL(1);
+    }
+
+    let key = normalize_process_match_key(&process_name);
+    if key.is_empty() {
+        return BOOL(1);
+    }
+
+    let state = &mut *(lparam.0 as *mut RunningEnumState);
+    if state.seen_keys.insert(key) {
+        state.apps.push(RunningAppInfo {
+            process_name,
+            window_title: Some(title),
+        });
+    }
+
+    BOOL(1)
 }
 
 unsafe fn read_window_title(hwnd: HWND) -> Option<String> {

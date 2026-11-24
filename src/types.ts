@@ -30,6 +30,14 @@ export interface ActivityLog {
   endedAt: number;
 }
 
+export interface DiscoverableApp {
+  processName: string;
+  windowTitle: string | null;
+  isRunning: boolean;
+  lastSeenAt: number | null;
+  totalDurationMs: number;
+}
+
 export interface TimeEntry {
   id: string;
   description: string;

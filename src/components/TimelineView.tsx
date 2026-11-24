@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudUpload,
+  EyeOff,
   RefreshCw,
   Trash2,
   X,
@@ -28,6 +29,8 @@ import {
   getDayRangeMs,
   getProcessColor,
   isSameLocalDay,
+  matchesAnyProcess,
+  processNameMatches,
   suggestDescriptionFromLogs,
 } from "../lib/time";
 import {
@@ -63,7 +66,9 @@ interface TimelineViewProps {
   tags: Tag[];
   status: PlatformStatus | null;
   minDurationMs: number;
+  excludedProcesses: string[];
   onRefresh: () => Promise<void>;
+  onExcludeProcess: (processName: string) => Promise<void>;
   onCreateEntry: (input: CreateTimeEntryInput) => Promise<TimeEntry>;
   onUpdateEntry: (id: string, input: UpdateTimeEntryInput) => Promise<void>;
   onDeleteEntry: (id: string) => Promise<void>;
@@ -110,7 +115,9 @@ export function TimelineView({
   tags,
   status,
   minDurationMs,
+  excludedProcesses,
   onRefresh,
+  onExcludeProcess,
   onCreateEntry,
   onUpdateEntry,
   onDeleteEntry,
@@ -1134,13 +1141,35 @@ export function TimelineView({
                     {selectedAppBreakdown.map((app) => (
                       <span
                         key={app.isIdle ? "idle" : app.processName}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-0.5 pl-1 pr-2 text-[10.5px] text-zinc-300"
+                        className="group inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] py-0.5 pl-1 pr-2 text-[10.5px] text-zinc-300"
                       >
                         <AppBadgeIcon processName={app.processName} isIdle={app.isIdle} size="xs" />
                         <span>{app.isIdle ? "유휴" : cleanProcessLabel(app.processName)}</span>
                         <span className="font-mono text-[10px] tabular-nums text-zinc-500">
                           {formatDurationShort(app.durationMs)}
                         </span>
+                        {!app.isIdle && (
+                          <button
+                            type="button"
+                            title={`${cleanProcessLabel(app.processName)} 수집 제외 (타임라인에서 숨김)`}
+                            onClick={() => {
+                              setSelectedLogIds((prev) =>
+                                prev.filter((id) => {
+                                  const match = clampedActivities.find((item) => item.log.id === id);
+                                  return (
+                                    !match ||
+                                    match.log.isIdle ||
+                                    !processNameMatches(app.processName, match.log.processName)
+                                  );
+                                }),
+                              );
+                              void onExcludeProcess(app.processName);
+                            }}
+                            className="-mr-0.5 rounded-full p-0.5 text-zinc-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300"
+                          >
+                            <EyeOff className="h-2.5 w-2.5" />
+                          </button>
+                        )}
                       </span>
                     ))}
                   </div>
@@ -1465,15 +1494,17 @@ export function TimelineView({
                 </div>
 
                 {/* Live Active Window Indicator */}
-                {isToday && status?.activeWindow && (
-                  <div className="flex items-center gap-2 border-t border-white/[0.06] pt-3">
-                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
-                    <AppBadgeIcon processName={status.activeWindow.processName} size="xs" />
-                    <span className="truncate font-mono text-[11px] text-zinc-300">
-                      {cleanProcessLabel(status.activeWindow.processName)}
-                    </span>
-                  </div>
-                )}
+                {isToday &&
+                  status?.activeWindow &&
+                  !matchesAnyProcess(excludedProcesses, status.activeWindow.processName) && (
+                    <div className="flex items-center gap-2 border-t border-white/[0.06] pt-3">
+                      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                      <AppBadgeIcon processName={status.activeWindow.processName} size="xs" />
+                      <span className="truncate font-mono text-[11px] text-zinc-300">
+                        {cleanProcessLabel(status.activeWindow.processName)}
+                      </span>
+                    </div>
+                  )}
               </div>
 
               {/* Top Apps Proportional Visual Bars */}
@@ -1489,18 +1520,30 @@ export function TimelineView({
                     {summary.topApps.map((app) => {
                       const style = getProcessColor(app.processName);
                       const pct = Math.max(5, Math.round((app.durationMs / maxTopAppMs) * 100));
+                      const label = cleanProcessLabel(app.processName);
                       return (
-                        <div key={app.processName} className="space-y-1">
+                        <div key={app.processName} className="group space-y-1">
                           <div className="flex items-center justify-between gap-2 text-xs">
                             <span className="flex min-w-0 items-center gap-2 text-zinc-200">
                               <AppBadgeIcon processName={app.processName} size="xs" />
-                              <span className="truncate font-medium">
-                                {cleanProcessLabel(app.processName)}
+                              <span className="truncate font-medium" title={app.processName}>
+                                {label}
                               </span>
                             </span>
-                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-zinc-400">
-                              {formatDurationShort(app.durationMs)}
-                            </span>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void onExcludeProcess(app.processName)}
+                                title={`${label} 수집 제외 (타임라인에서 숨김)`}
+                                aria-label={`${label} 수집 제외`}
+                                className="rounded p-0.5 text-zinc-500 opacity-0 transition-all hover:bg-rose-500/15 hover:text-rose-300 focus-visible:opacity-100 group-hover:opacity-100"
+                              >
+                                <EyeOff className="h-3 w-3" />
+                              </button>
+                              <span className="font-mono text-[11px] tabular-nums text-zinc-400">
+                                {formatDurationShort(app.durationMs)}
+                              </span>
+                            </div>
                           </div>
                           <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.05]">
                             <div

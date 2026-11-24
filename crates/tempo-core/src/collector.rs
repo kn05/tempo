@@ -10,8 +10,8 @@ use crate::db::{Database, DbResult};
 use crate::idle::IdleStateMachine;
 use crate::models::{AppSettings, IdleReturnPrompt, PresenceOverride, TimeEntry};
 use crate::tracker::{
-    ActiveWindowInfo, ActivityAggregator, ActivityTracker, AggregationAction, AggregatorConfig,
-    IdleDetector,
+    process_name_matches, ActiveWindowInfo, ActivityAggregator, ActivityTracker, AggregationAction,
+    AggregatorConfig, IdleDetector,
 };
 
 /// Thread-safe slot accepting external extension heartbeats (e.g. VS Code extension in Phase 4).
@@ -59,7 +59,7 @@ impl PresenceSlot {
                     || ov
                         .target_processes
                         .iter()
-                        .any(|proc_name| proc_name.eq_ignore_ascii_case(&focused.process_name))
+                        .any(|proc_name| process_name_matches(proc_name, &focused.process_name))
             })
             .max_by_key(|ov| ov.received_at_ms)
             .cloned();

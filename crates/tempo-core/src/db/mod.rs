@@ -12,9 +12,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{
-    ActivityLog, AppSettings, CreateTimeEntryInput, IdleResolutionAction, IdleResolutionInput,
-    IdleResolutionResult, NewActivityLog, StartTimerInput, SyncMode, SyncStatus, Tag,
-    TickTickProject, TickTickSyncQueueSummary, TickTickTask, TimeEntry, UpdateTimeEntryInput,
+    ActivityLog, AppSettings, CreateTimeEntryInput, DiscoverableApp, IdleResolutionAction,
+    IdleResolutionInput, IdleResolutionResult, NewActivityLog, StartTimerInput, SyncMode,
+    SyncStatus, Tag, TickTickProject, TickTickSyncQueueSummary, TickTickTask, TimeEntry,
+    UpdateTimeEntryInput,
 };
 
 pub use migrations::CURRENT_SCHEMA_VERSION;
@@ -369,6 +370,69 @@ impl Database {
                 is_idle: row.get::<_, i32>(5)? != 0,
                 started_at: row.get(6)?,
                 ended_at: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Lists activity logs in `[from_ms, to_ms]` for timeline display, hiding non-idle rows whose
+    /// process matches `excluded_processes` while preserving raw records in SQLite.
+    pub fn list_activity_logs_visible(
+        &self,
+        from_ms: i64,
+        to_ms: i64,
+        min_duration_ms: Option<i64>,
+        excluded_processes: &[String],
+    ) -> DbResult<Vec<ActivityLog>> {
+        let logs = self.list_activity_logs_filtered(from_ms, to_ms, min_duration_ms)?;
+        if excluded_processes.is_empty() {
+            return Ok(logs);
+        }
+        Ok(logs
+            .into_iter()
+            .filter(|log| {
+                log.is_idle
+                    || !crate::tracker::matches_any_process(excluded_processes, &log.process_name)
+            })
+            .collect())
+    }
+
+    /// Returns distinct non-idle applications previously recorded in `activity_logs`,
+    /// ordered by most recent usage.
+    pub fn list_recent_activity_apps(&self, limit: i64) -> DbResult<Vec<DiscoverableApp>> {
+        let conn = self.conn.lock().map_err(|_| DbError::LockPoisoned)?;
+        let effective_limit = limit.clamp(1, 500);
+        let mut stmt = conn.prepare(
+            "SELECT
+                a1.process_name,
+                MAX(a1.ended_at) AS last_seen_at,
+                SUM(CASE WHEN a1.ended_at > a1.started_at THEN a1.ended_at - a1.started_at ELSE 0 END) AS total_duration_ms,
+                (
+                    SELECT a2.window_title
+                    FROM activity_logs a2
+                    WHERE LOWER(TRIM(a2.process_name)) = LOWER(TRIM(a1.process_name))
+                      AND a2.is_idle = 0
+                      AND a2.window_title IS NOT NULL
+                      AND TRIM(a2.window_title) != ''
+                      AND a2.window_title != '[Redacted]'
+                    ORDER BY a2.ended_at DESC
+                    LIMIT 1
+                ) AS latest_title
+             FROM activity_logs a1
+             WHERE a1.is_idle = 0
+               AND TRIM(a1.process_name) != ''
+               AND LOWER(TRIM(a1.process_name)) NOT IN ('idle', 'unknown')
+             GROUP BY LOWER(TRIM(a1.process_name))
+             ORDER BY last_seen_at DESC, total_duration_ms DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![effective_limit], |row| {
+            Ok(DiscoverableApp {
+                process_name: row.get(0)?,
+                last_seen_at: row.get(1)?,
+                total_duration_ms: row.get(2)?,
+                window_title: row.get(3)?,
+                is_running: false,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -1908,6 +1972,67 @@ mod tests {
             .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, row_id);
+    }
+
+    #[test]
+    fn hides_excluded_processes_in_visible_timeline_without_deleting_raw_rows_and_lists_recent_apps()
+    {
+        let db = Database::open_in_memory().unwrap();
+        db.insert_activity_log(&NewActivityLog {
+            source: "win_api".into(),
+            process_name: "Discord.exe".into(),
+            window_title: Some("#general — Discord".into()),
+            metadata_json: None,
+            is_idle: false,
+            started_at: 1_000,
+            ended_at: 11_000,
+        })
+        .unwrap();
+        db.insert_activity_log(&NewActivityLog {
+            source: "win_api".into(),
+            process_name: "Code.exe".into(),
+            window_title: Some("tempo — Visual Studio Code".into()),
+            metadata_json: None,
+            is_idle: false,
+            started_at: 12_000,
+            ended_at: 42_000,
+        })
+        .unwrap();
+        db.insert_activity_log(&NewActivityLog {
+            source: "idle".into(),
+            process_name: "idle".into(),
+            window_title: None,
+            metadata_json: None,
+            is_idle: true,
+            started_at: 42_000,
+            ended_at: 52_000,
+        })
+        .unwrap();
+
+        // Excluding "Discord" (without .exe) hides "Discord.exe" from visible timeline logs
+        // while keeping idle spans and preserving the raw DB rows.
+        let visible = db
+            .list_activity_logs_visible(0, 100_000, None, &["Discord".into()])
+            .unwrap();
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].process_name, "Code.exe");
+        assert!(visible[1].is_idle);
+
+        // Removing the exclusion immediately restores historical Discord rows.
+        let restored = db.list_activity_logs_visible(0, 100_000, None, &[]).unwrap();
+        assert_eq!(restored.len(), 3);
+
+        // Recent app discovery skips idle and orders by recency.
+        let recent = db.list_recent_activity_apps(20).unwrap();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].process_name, "Code.exe");
+        assert_eq!(recent[0].total_duration_ms, 30_000);
+        assert_eq!(
+            recent[0].window_title.as_deref(),
+            Some("tempo — Visual Studio Code")
+        );
+        assert_eq!(recent[1].process_name, "Discord.exe");
+        assert_eq!(recent[1].total_duration_ms, 10_000);
     }
 
     #[test]

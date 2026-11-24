@@ -11,19 +11,21 @@ import {
 import { useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AppSettings,
+  DiscoverableApp,
   ShortcutStatus,
   SyncMode,
   TickTickConnectionStatus,
   TickTickProject,
 } from "../types";
+import { ProcessAppPicker } from "./ProcessAppPicker";
 
 export interface SettingsDraft {
   pollIntervalMs: string;
   idleThresholdMin: string;
   sleepGapSec: string;
-  redactedProcesses: string;
+  redactedProcesses: string[];
   redactedTitleKeywords: string;
-  excludedProcesses: string;
+  excludedProcesses: string[];
   syncMode: SyncMode;
   fallbackProjectId: string;
   stopTimerOnQuit: boolean;
@@ -43,12 +45,20 @@ interface SettingsViewProps {
   projects: TickTickProject[];
   shortcutStatus: ShortcutStatus | null;
   ticktickStatus: TickTickConnectionStatus | null;
+  discoverableApps: DiscoverableApp[];
+  loadingDiscoverableApps: boolean;
   runtimeLabel: string;
   savedIndicator: boolean;
   onChangeDraft: (next: SettingsDraft) => void;
   onSubmit: (event: FormEvent) => Promise<void>;
   onResetDraft: () => void;
   onOpenTickTick: () => void;
+  onRefreshDiscoverableApps: () => void;
+}
+
+function sameStringList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, idx) => item === b[idx]);
 }
 
 function formatKeyEventToShortcut(event: ReactKeyboardEvent<HTMLInputElement>): string | null {
@@ -252,12 +262,15 @@ export function SettingsView({
   projects,
   shortcutStatus,
   ticktickStatus,
+  discoverableApps,
+  loadingDiscoverableApps,
   runtimeLabel,
   savedIndicator,
   onChangeDraft,
   onSubmit,
   onResetDraft,
   onOpenTickTick,
+  onRefreshDiscoverableApps,
 }: SettingsViewProps) {
   const [recordingField, setRecordingField] = useState<
     "shortcutToggleTimer" | "shortcutQuickEntry" | null
@@ -267,9 +280,9 @@ export function SettingsView({
     draft.pollIntervalMs !== String(savedSettings.pollIntervalMs) ||
     draft.idleThresholdMin !== String(Math.round(savedSettings.idleThresholdMs / 60_000)) ||
     draft.sleepGapSec !== String(Math.round(savedSettings.sleepGapThresholdMs / 1_000)) ||
-    draft.redactedProcesses !== savedSettings.redactedProcesses.join(", ") ||
+    !sameStringList(draft.redactedProcesses, savedSettings.redactedProcesses) ||
     draft.redactedTitleKeywords !== savedSettings.redactedTitleKeywords.join(", ") ||
-    draft.excludedProcesses !== savedSettings.excludedProcesses.join(", ") ||
+    !sameStringList(draft.excludedProcesses, savedSettings.excludedProcesses) ||
     draft.syncMode !== savedSettings.syncMode ||
     draft.fallbackProjectId !== (savedSettings.fallbackProjectId ?? "") ||
     draft.stopTimerOnQuit !== savedSettings.stopTimerOnQuit ||
@@ -392,17 +405,18 @@ export function SettingsView({
             <span>개인정보</span>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-            <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium text-zinc-400">제목 마스킹 앱</span>
-              <input
-                type="text"
-                value={draft.redactedProcesses}
-                onChange={(e) => onChangeDraft({ ...draft, redactedProcesses: e.target.value })}
-                placeholder="1password.exe, bitwarden.exe"
-                className="h-9 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
-              />
-            </label>
+          <div className="space-y-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+            <ProcessAppPicker
+              label="제목 마스킹 앱"
+              description="창 제목을 [Redacted]로 가려 기록합니다. (.exe 생략 가능)"
+              values={draft.redactedProcesses}
+              discoverableApps={discoverableApps}
+              loadingApps={loadingDiscoverableApps}
+              accentTone="amber"
+              emptyHint="마스킹할 앱 없음"
+              onChange={(next) => onChangeDraft({ ...draft, redactedProcesses: next })}
+              onRefreshApps={onRefreshDiscoverableApps}
+            />
 
             <label className="block space-y-1.5">
               <span className="text-[11px] font-medium text-zinc-400">제목 마스킹 키워드</span>
@@ -415,16 +429,17 @@ export function SettingsView({
               />
             </label>
 
-            <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium text-zinc-400">수집 제외 앱</span>
-              <input
-                type="text"
-                value={draft.excludedProcesses}
-                onChange={(e) => onChangeDraft({ ...draft, excludedProcesses: e.target.value })}
-                placeholder="KeePass.exe, Signal.exe"
-                className="h-9 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
-              />
-            </label>
+            <ProcessAppPicker
+              label="수집 제외 앱"
+              description="선택한 앱은 새로 수집되지 않으며, 기존 타임라인에서도 자동으로 숨겨집니다."
+              values={draft.excludedProcesses}
+              discoverableApps={discoverableApps}
+              loadingApps={loadingDiscoverableApps}
+              accentTone="rose"
+              emptyHint="제외할 앱 없음"
+              onChange={(next) => onChangeDraft({ ...draft, excludedProcesses: next })}
+              onRefreshApps={onRefreshDiscoverableApps}
+            />
           </div>
         </div>
 
