@@ -125,6 +125,31 @@ pub fn matches_any_process(rules: &[String], process_name: &str) -> bool {
         .any(|rule| process_name_matches(rule, process_name))
 }
 
+/// Returns `true` when `window_title` contains any non-empty keyword in `keywords`
+/// (case-insensitive substring match).
+pub fn title_matches_any_keyword(keywords: &[String], window_title: Option<&str>) -> bool {
+    let Some(title) = window_title else {
+        return false;
+    };
+    let title_lower = title.to_lowercase();
+    keywords.iter().any(|kw| {
+        let trimmed = kw.trim();
+        !trimmed.is_empty() && title_lower.contains(&trimmed.to_lowercase())
+    })
+}
+
+/// Returns `true` when an activity sample should have its window title and metadata redacted
+/// based on either `redacted_processes` or `redacted_title_keywords`.
+pub fn should_redact_activity(
+    redacted_processes: &[String],
+    redacted_title_keywords: &[String],
+    process_name: &str,
+    window_title: Option<&str>,
+) -> bool {
+    matches_any_process(redacted_processes, process_name)
+        || title_matches_any_keyword(redacted_title_keywords, window_title)
+}
+
 /// Merges currently visible desktop apps with recently recorded apps from SQLite into a
 /// deduplicated list: running apps first (in window Z-order), followed by non-running recent apps
 /// sorted by recency and total duration.
@@ -337,16 +362,12 @@ impl ActivityAggregator {
                 return AggregationAction::Ignore;
             }
 
-            let redacted_by_process =
-                matches_any_process(&self.config.redacted_processes, &info.process_name);
-            let redacted_by_keyword = info.window_title.as_deref().is_some_and(|title| {
-                let title_lower = title.to_lowercase();
-                self.config
-                    .redacted_title_keywords
-                    .iter()
-                    .any(|kw| !kw.is_empty() && title_lower.contains(&kw.to_lowercase()))
-            });
-            let redacted = redacted_by_process || redacted_by_keyword;
+            let redacted = should_redact_activity(
+                &self.config.redacted_processes,
+                &self.config.redacted_title_keywords,
+                &info.process_name,
+                info.window_title.as_deref(),
+            );
 
             ActiveSpanKey {
                 source: info.source,

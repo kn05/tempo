@@ -375,24 +375,42 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// Lists activity logs in `[from_ms, to_ms]` for timeline display, hiding non-idle rows whose
-    /// process matches `excluded_processes` while preserving raw records in SQLite.
+    /// Lists activity logs in `[from_ms, to_ms]` for timeline display:
+    /// - hides non-idle rows matching `settings.excluded_processes`
+    /// - retroactively masks `window_title` (`"[Redacted]"`) and clears `metadata_json` for rows
+    ///   matching `settings.redacted_processes` or `settings.redacted_title_keywords`
+    ///
+    /// Raw SQLite rows remain untouched so loosening filters later restores historical details.
     pub fn list_activity_logs_visible(
         &self,
         from_ms: i64,
         to_ms: i64,
         min_duration_ms: Option<i64>,
-        excluded_processes: &[String],
+        settings: &AppSettings,
     ) -> DbResult<Vec<ActivityLog>> {
         let logs = self.list_activity_logs_filtered(from_ms, to_ms, min_duration_ms)?;
-        if excluded_processes.is_empty() {
-            return Ok(logs);
-        }
         Ok(logs
             .into_iter()
-            .filter(|log| {
-                log.is_idle
-                    || !crate::tracker::matches_any_process(excluded_processes, &log.process_name)
+            .filter_map(|mut log| {
+                if log.is_idle {
+                    return Some(log);
+                }
+                if crate::tracker::matches_any_process(
+                    &settings.excluded_processes,
+                    &log.process_name,
+                ) {
+                    return None;
+                }
+                if crate::tracker::should_redact_activity(
+                    &settings.redacted_processes,
+                    &settings.redacted_title_keywords,
+                    &log.process_name,
+                    log.window_title.as_deref(),
+                ) {
+                    log.window_title = Some("[Redacted]".into());
+                    log.metadata_json = None;
+                }
+                Some(log)
             })
             .collect())
     }
@@ -1975,7 +1993,7 @@ mod tests {
     }
 
     #[test]
-    fn hides_excluded_processes_in_visible_timeline_without_deleting_raw_rows_and_lists_recent_apps()
+    fn applies_retroactive_exclusion_and_redaction_without_mutating_raw_rows_and_lists_recent_apps()
     {
         let db = Database::open_in_memory().unwrap();
         db.insert_activity_log(&NewActivityLog {
@@ -1986,6 +2004,16 @@ mod tests {
             is_idle: false,
             started_at: 1_000,
             ended_at: 11_000,
+        })
+        .unwrap();
+        db.insert_activity_log(&NewActivityLog {
+            source: "win_api".into(),
+            process_name: "firefox.exe".into(),
+            window_title: Some("X에서 홍길동님: \"안녕하세요\" — Mozilla Firefox".into()),
+            metadata_json: Some(r#"{"url":"https://x.com"}"#.into()),
+            is_idle: false,
+            started_at: 11_500,
+            ended_at: 12_000,
         })
         .unwrap();
         db.insert_activity_log(&NewActivityLog {
@@ -2009,30 +2037,54 @@ mod tests {
         })
         .unwrap();
 
-        // Excluding "Discord" (without .exe) hides "Discord.exe" from visible timeline logs
-        // while keeping idle spans and preserving the raw DB rows.
+        // Excluding "Discord" (without .exe) hides "Discord.exe" and redacting "X에서" / "Code"
+        // masks historical titles & metadata while preserving raw DB rows.
+        let settings = AppSettings {
+            excluded_processes: vec!["Discord".into()],
+            redacted_processes: vec!["Code".into()],
+            redacted_title_keywords: vec!["X에서".into()],
+            ..Default::default()
+        };
         let visible = db
-            .list_activity_logs_visible(0, 100_000, None, &["Discord".into()])
+            .list_activity_logs_visible(0, 100_000, None, &settings)
             .unwrap();
-        assert_eq!(visible.len(), 2);
-        assert_eq!(visible[0].process_name, "Code.exe");
-        assert!(visible[1].is_idle);
+        assert_eq!(visible.len(), 3);
+        assert_eq!(visible[0].process_name, "firefox.exe");
+        assert_eq!(visible[0].window_title.as_deref(), Some("[Redacted]"));
+        assert_eq!(visible[0].metadata_json, None);
+        assert_eq!(visible[1].process_name, "Code.exe");
+        assert_eq!(visible[1].window_title.as_deref(), Some("[Redacted]"));
+        assert!(visible[2].is_idle);
 
-        // Removing the exclusion immediately restores historical Discord rows.
-        let restored = db.list_activity_logs_visible(0, 100_000, None, &[]).unwrap();
-        assert_eq!(restored.len(), 3);
+        // Removing the filters immediately restores historical rows and original titles.
+        let cleared = AppSettings {
+            excluded_processes: vec![],
+            redacted_processes: vec![],
+            redacted_title_keywords: vec![],
+            ..Default::default()
+        };
+        let restored = db
+            .list_activity_logs_visible(0, 100_000, None, &cleared)
+            .unwrap();
+        assert_eq!(restored.len(), 4);
+        assert_eq!(
+            restored[1].window_title.as_deref(),
+            Some("X에서 홍길동님: \"안녕하세요\" — Mozilla Firefox")
+        );
+        assert!(restored[1].metadata_json.is_some());
 
         // Recent app discovery skips idle and orders by recency.
         let recent = db.list_recent_activity_apps(20).unwrap();
-        assert_eq!(recent.len(), 2);
+        assert_eq!(recent.len(), 3);
         assert_eq!(recent[0].process_name, "Code.exe");
         assert_eq!(recent[0].total_duration_ms, 30_000);
         assert_eq!(
             recent[0].window_title.as_deref(),
             Some("tempo — Visual Studio Code")
         );
-        assert_eq!(recent[1].process_name, "Discord.exe");
-        assert_eq!(recent[1].total_duration_ms, 10_000);
+        assert_eq!(recent[1].process_name, "firefox.exe");
+        assert_eq!(recent[2].process_name, "Discord.exe");
+        assert_eq!(recent[2].total_duration_ms, 10_000);
     }
 
     #[test]

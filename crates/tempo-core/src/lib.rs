@@ -22,7 +22,7 @@ pub use ticktick::{
 };
 pub use tracker::{
     create_platform_idle_detector, create_platform_tracker, matches_any_process,
-    merge_discoverable_apps, normalize_process_match_key, process_name_matches, ActiveWindowInfo,
-    ActivityAggregator, ActivityTracker, AggregationAction, AggregatorConfig, IdleDetector,
-    RunningAppInfo,
+    merge_discoverable_apps, normalize_process_match_key, process_name_matches,
+    should_redact_activity, title_matches_any_keyword, ActiveWindowInfo, ActivityAggregator,
+    ActivityTracker, AggregationAction, AggregatorConfig, IdleDetector, RunningAppInfo,
 };

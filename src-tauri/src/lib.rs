@@ -9,13 +9,13 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWin
 use tauri_plugin_opener::OpenerExt;
 use tempo_core::{
     create_platform_idle_detector, create_platform_tracker, current_timestamp_ms,
-    merge_discoverable_apps, parse_quick_entry, ActiveWindowInfo, ActivityLog, ActivityTracker,
-    AppSettings, CollectorEngine, CollectorHandle, CreateTimeEntryInput, CredentialManager,
-    Database, DiscoverableApp, IdleDetector, IdleResolutionInput, IdleResolutionResult,
-    IdleReturnPrompt, OAuthLoginStartResult, ParsedQuickEntry, PresenceOverride,
-    SaveOAuthConfigInput, ShortcutStatus, StartTimerInput, SyncWorkerHandle, Tag,
-    TickTickConnectionStatus, TickTickProject, TickTickPullResult, TickTickService,
-    TickTickSyncBatchResult, TickTickTask, TimeEntry, UpdateTimeEntryInput,
+    merge_discoverable_apps, parse_quick_entry, should_redact_activity, ActiveWindowInfo,
+    ActivityLog, ActivityTracker, AppSettings, CollectorEngine, CollectorHandle,
+    CreateTimeEntryInput, CredentialManager, Database, DiscoverableApp, IdleDetector,
+    IdleResolutionInput, IdleResolutionResult, IdleReturnPrompt, OAuthLoginStartResult,
+    ParsedQuickEntry, PresenceOverride, SaveOAuthConfigInput, ShortcutStatus, StartTimerInput,
+    SyncWorkerHandle, Tag, TickTickConnectionStatus, TickTickProject, TickTickPullResult,
+    TickTickService, TickTickSyncBatchResult, TickTickTask, TimeEntry, UpdateTimeEntryInput,
     DEFAULT_SYNC_WORKER_INTERVAL_SECS,
 };
 
@@ -288,25 +288,33 @@ fn list_activity_logs(
     to_ms: i64,
     min_duration_ms: Option<i64>,
 ) -> Result<Vec<ActivityLog>, String> {
-    let excluded_processes = state
-        .db
-        .get_settings()
-        .map(|s| s.excluded_processes)
-        .unwrap_or_default();
+    let settings = state.db.get_settings().unwrap_or_default();
     state
         .db
-        .list_activity_logs_visible(from_ms, to_ms, min_duration_ms, &excluded_processes)
+        .list_activity_logs_visible(from_ms, to_ms, min_duration_ms, &settings)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn list_discoverable_apps(state: State<'_, AppState>) -> Result<Vec<DiscoverableApp>, String> {
+    let settings = state.db.get_settings().unwrap_or_default();
     let running = state.tracker.running_apps();
     let recent = state
         .db
         .list_recent_activity_apps(100)
         .map_err(|e| e.to_string())?;
-    Ok(merge_discoverable_apps(running, recent))
+    let mut apps = merge_discoverable_apps(running, recent);
+    for app in &mut apps {
+        if should_redact_activity(
+            &settings.redacted_processes,
+            &settings.redacted_title_keywords,
+            &app.process_name,
+            app.window_title.as_deref(),
+        ) {
+            app.window_title = Some("[Redacted]".into());
+        }
+    }
+    Ok(apps)
 }
 
 #[tauri::command]

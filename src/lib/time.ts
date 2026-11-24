@@ -265,6 +265,27 @@ export function matchesAnyProcess(rules: string[], processName: string): boolean
   return rules.some((rule) => processNameMatches(rule, processName));
 }
 
+export function titleMatchesAnyKeyword(keywords: string[], windowTitle: string | null): boolean {
+  if (!windowTitle) return false;
+  const titleLower = windowTitle.toLowerCase();
+  return keywords.some((kw) => {
+    const trimmed = kw.trim();
+    return trimmed.length > 0 && titleLower.includes(trimmed.toLowerCase());
+  });
+}
+
+export function shouldRedactActivity(
+  redactedProcesses: string[],
+  redactedTitleKeywords: string[],
+  processName: string,
+  windowTitle: string | null,
+): boolean {
+  return (
+    matchesAnyProcess(redactedProcesses, processName) ||
+    titleMatchesAnyKeyword(redactedTitleKeywords, windowTitle)
+  );
+}
+
 export function dedupeProcessList(items: string[]): string[] {
   const out: string[] = [];
   for (const raw of items) {

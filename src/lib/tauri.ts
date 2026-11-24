@@ -27,7 +27,12 @@ import type {
   UpdateTimeEntryInput,
 } from "../types";
 import { parseQuickEntry } from "./quickEntry";
-import { dedupeProcessList, matchesAnyProcess, normalizeProcessMatchKey } from "./time";
+import {
+  dedupeProcessList,
+  matchesAnyProcess,
+  normalizeProcessMatchKey,
+  shouldRedactActivity,
+} from "./time";
 
 export const EVENT_IDLE_RETURN = "tempo://idle-return";
 export const EVENT_TIMER_CHANGED = "tempo://timer-changed";
@@ -678,15 +683,29 @@ export async function listActivityLogs(
   }
   const state = getPreviewState();
   const minDur = Math.max(0, minDurationMs ?? 0);
-  const excluded = state.settings.excludedProcesses;
+  const { excludedProcesses, redactedProcesses, redactedTitleKeywords } = state.settings;
   return state.activityLogs
     .filter(
       (log) =>
         log.endedAt >= fromMs &&
         log.startedAt <= toMs &&
         log.endedAt - log.startedAt >= minDur &&
-        (log.isIdle || !matchesAnyProcess(excluded, log.processName)),
+        (log.isIdle || !matchesAnyProcess(excludedProcesses, log.processName)),
     )
+    .map((log) => {
+      if (
+        !log.isIdle &&
+        shouldRedactActivity(
+          redactedProcesses,
+          redactedTitleKeywords,
+          log.processName,
+          log.windowTitle,
+        )
+      ) {
+        return { ...log, windowTitle: "[Redacted]", metadataJson: null };
+      }
+      return log;
+    })
     .sort((a, b) => a.startedAt - b.startedAt);
 }
 
@@ -745,7 +764,12 @@ export async function listDiscoverableApps(): Promise<DiscoverableApp[]> {
   const remaining = [...recentByKey.values()].sort(
     (a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0) || b.totalDurationMs - a.totalDurationMs,
   );
-  return [...out, ...remaining];
+  const { redactedProcesses, redactedTitleKeywords } = state.settings;
+  return [...out, ...remaining].map((app) =>
+    shouldRedactActivity(redactedProcesses, redactedTitleKeywords, app.processName, app.windowTitle)
+      ? { ...app, windowTitle: "[Redacted]" }
+      : app,
+  );
 }
 
 export async function submitPresenceHeartbeat(payload: PresenceOverride): Promise<void> {

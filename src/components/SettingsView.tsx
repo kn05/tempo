@@ -408,7 +408,7 @@ export function SettingsView({
           <div className="space-y-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
             <ProcessAppPicker
               label="제목 마스킹 앱"
-              description="창 제목을 [Redacted]로 가려 기록합니다. (.exe 생략 가능)"
+              description="창 제목을 [Redacted]로 가립니다. 기존 타임라인 기록에도 즉시 적용됩니다."
               values={draft.redactedProcesses}
               discoverableApps={discoverableApps}
               loadingApps={loadingDiscoverableApps}
@@ -420,11 +420,14 @@ export function SettingsView({
 
             <label className="block space-y-1.5">
               <span className="text-[11px] font-medium text-zinc-400">제목 마스킹 키워드</span>
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                창 제목에 해당 문구가 포함되면 [Redacted]로 가립니다. 기존 타임라인 기록에도 즉시 적용됩니다.
+              </p>
               <input
                 type="text"
                 value={draft.redactedTitleKeywords}
                 onChange={(e) => onChangeDraft({ ...draft, redactedTitleKeywords: e.target.value })}
-                placeholder="Incognito, InPrivate, 시크릿"
+                placeholder="Incognito, InPrivate, 시크릿, X에서, / X"
                 className="h-9 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
               />
             </label>
