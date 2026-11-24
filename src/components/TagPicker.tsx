@@ -108,28 +108,30 @@ export function TagPicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={selectedTagIds.length > 0 ? `태그 ${selectedTagIds.length}개 선택됨` : "태그 선택"}
-        className={`inline-flex items-center gap-1.5 rounded-lg border transition ${
-          compact ? "h-8 px-2.5 text-xs" : "h-9 px-2.5 text-xs"
+        title={selectedTagIds.length > 0 ? `태그 ${selectedTagIds.length}` : "태그"}
+        className={`inline-flex items-center gap-1.5 rounded-lg transition-colors ${
+          compact ? "h-8 px-2 text-xs" : "h-8 px-2 text-xs"
         } ${
           selectedTagIds.length > 0
-            ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-200 hover:border-indigo-400"
-            : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+            ? "bg-indigo-500/15 text-indigo-200 ring-1 ring-inset ring-indigo-500/30 hover:bg-indigo-500/20"
+            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
         }`}
       >
         <TagIcon className="h-3.5 w-3.5 shrink-0" />
         {selectedTagIds.length > 0 && (
-          <span className="font-mono text-[11px] font-semibold">{selectedTagIds.length}</span>
+          <span className="font-mono text-[11px] font-semibold tabular-nums">
+            {selectedTagIds.length}
+          </span>
         )}
       </button>
 
       {open && (
         <div
-          className={`absolute top-full z-40 mt-1.5 w-64 overflow-hidden rounded-xl border border-zinc-700/90 bg-zinc-900 shadow-2xl ${
+          className={`absolute top-full z-40 mt-1.5 w-60 overflow-hidden rounded-xl border border-white/[0.1] bg-[#14141a]/98 shadow-2xl shadow-black/70 backdrop-blur-xl ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-zinc-800 px-2.5 py-2">
+          <div className="flex items-center gap-2 border-b border-white/[0.07] px-2.5 py-2">
             <Search className="h-3.5 w-3.5 text-zinc-500" />
             <input
               ref={inputRef}
@@ -142,7 +144,7 @@ export function TagPicker({
                   void handleCreate();
                 }
               }}
-              placeholder="태그 검색 또는 새 태그 입력..."
+              placeholder="태그 검색 · 추가..."
               className="w-full bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
             />
             {query && (
@@ -162,27 +164,28 @@ export function TagPicker({
                 type="button"
                 disabled={creating}
                 onClick={() => void handleCreate()}
-                className="mb-1 flex w-full items-center gap-2 rounded-lg bg-indigo-500/15 px-2.5 py-1.5 text-left text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/25 disabled:opacity-50"
+                className="mb-1 flex w-full items-center justify-between gap-2 rounded-lg bg-indigo-500/15 px-2.5 py-1.5 text-left text-xs font-medium text-indigo-300 transition-colors hover:bg-indigo-500/25 disabled:opacity-50"
               >
-                <Plus className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">새 로컬 태그 &ldquo;#{trimmedQuery}&rdquo; 생성</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">#{trimmedQuery}</span>
+                </span>
+                <span className="shrink-0 text-[10px] text-indigo-300/70">Enter</span>
               </button>
             )}
 
             {filtered.length === 0 && !canCreateNew ? (
-              <div className="px-2.5 py-4 text-center text-xs text-zinc-500">
-                태그가 없습니다. 이름을 입력해 추가하세요.
-              </div>
+              <div className="px-2.5 py-4 text-center text-xs text-zinc-500">태그 없음</div>
             ) : (
               filtered.map((tag) => {
                 const checked = selectedSet.has(tag.id);
                 return (
                   <div
                     key={tag.id}
-                    className={`group flex items-center justify-between rounded-lg px-2 py-1.5 text-xs transition ${
+                    className={`group flex items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors ${
                       checked
                         ? "bg-indigo-500/15 text-indigo-200"
-                        : "text-zinc-200 hover:bg-zinc-800"
+                        : "text-zinc-200 hover:bg-white/[0.05]"
                     }`}
                   >
                     <button
@@ -191,35 +194,35 @@ export function TagPicker({
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                        className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
                           checked
                             ? "border-indigo-400 bg-indigo-500 text-white"
-                            : "border-zinc-600 bg-zinc-950"
+                            : "border-zinc-700 bg-zinc-950"
                         }`}
                       >
-                        {checked && <Check className="h-3 w-3" />}
+                        {checked && <Check className="h-2.5 w-2.5" />}
                       </span>
                       <span
-                        className="h-2 w-2 shrink-0 rounded-full"
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
                         style={{ backgroundColor: tag.color ?? "#6366f1" }}
                       />
                       <span className="truncate">#{tag.name}</span>
-                      <span className="rounded bg-zinc-800 px-1 py-0.5 text-[9px] uppercase text-zinc-400">
-                        {tag.source === "ticktick" ? "TT" : "local"}
-                      </span>
+                      {tag.source === "ticktick" && (
+                        <span className="text-[9px] font-medium text-zinc-500">TT</span>
+                      )}
                     </button>
 
                     {onDeleteTag && tag.source !== "ticktick" && (
                       <button
                         type="button"
-                        title="로컬 태그 삭제"
+                        title="삭제"
                         onClick={() => {
                           if (checked) {
                             onChange(selectedTagIds.filter((tid) => tid !== tag.id));
                           }
                           void onDeleteTag(tag.id);
                         }}
-                        className="ml-1 rounded p-1 text-zinc-500 opacity-0 transition hover:bg-rose-500/15 hover:text-rose-400 group-hover:opacity-100"
+                        className="ml-1 rounded p-1 text-zinc-500 opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-400 group-hover:opacity-100"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -231,13 +234,13 @@ export function TagPicker({
           </div>
 
           {selectedTagIds.length > 0 && (
-            <div className="border-t border-zinc-800 px-2.5 py-1.5 text-right">
+            <div className="border-t border-white/[0.07] px-2.5 py-1.5 text-right">
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="text-[11px] text-zinc-400 hover:text-zinc-200"
+                className="text-[11px] text-zinc-400 transition-colors hover:text-zinc-200"
               >
-                선택 모두 해제
+                초기화
               </button>
             </div>
           )}

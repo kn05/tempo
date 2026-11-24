@@ -1,5 +1,6 @@
-import { ClockAlert } from "lucide-react";
+import { Check, Play, Scissors, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { formatDurationShort, formatTimeHm } from "../lib/time";
 import type { IdleResolutionAction, IdleReturnPrompt } from "../types";
 
 interface IdleReturnModalProps {
@@ -8,16 +9,6 @@ interface IdleReturnModalProps {
     action: IdleResolutionAction,
     options?: { idleDescription?: string; resumeOriginal?: boolean },
   ) => Promise<void>;
-}
-
-function formatMinutesSeconds(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h}시간 ${m}분 ${s}초`;
-  if (m > 0) return `${m}분 ${s}초`;
-  return `${s}초`;
 }
 
 export function IdleReturnModal({ prompt, onResolve }: IdleReturnModalProps) {
@@ -38,92 +29,143 @@ export function IdleReturnModal({ prompt, onResolve }: IdleReturnModalProps) {
     }
   }
 
+  const idleStartHm = formatTimeHm(prompt.idleStartedAt);
+  const returnedHm = formatTimeHm(prompt.returnedAt);
+  const idleDurLabel = formatDurationShort(prompt.idleDurationMs);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-700/80 bg-zinc-900 p-6 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
-            <ClockAlert className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-zinc-100">
-              유휴 시간이 감지되었습니다
-            </h2>
-            <p className="mt-1 text-xs text-zinc-400">
-              <span className="font-medium text-zinc-200">
-                {prompt.entryDescription || "(Untitled)"}
-              </span>{" "}
-              타이머 실행 중{" "}
-              <span className="font-semibold text-amber-300">
-                {formatMinutesSeconds(prompt.idleDurationMs)}
-              </span>
-              동안 입력이 없었습니다.
-            </p>
-            <p className="mt-1 font-mono text-[11px] text-zinc-500">
-              {new Date(prompt.idleStartedAt).toLocaleTimeString()} –{" "}
-              {new Date(prompt.returnedAt).toLocaleTimeString()}
-            </p>
-          </div>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.1] bg-[#121218] shadow-2xl shadow-black/80">
+        {/* Amber Top Hairline */}
+        <div className="h-[2px] w-full bg-gradient-to-r from-indigo-500 via-amber-400 to-amber-500/40" />
 
-        <div className="mt-5 space-y-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void choose("keep")}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2.5 text-left text-sm transition hover:border-indigo-500/60 hover:bg-zinc-800 disabled:opacity-50"
-          >
-            <div className="font-medium text-zinc-100">유지 (Keep)</div>
-            <div className="text-xs text-zinc-400">유휴 시간을 포함하여 계속 기록합니다.</div>
-          </button>
+        <div className="space-y-5 p-6">
+          {/* Hero Metric & Visual Timeline Strip */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-amber-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  <span>유휴 감지</span>
+                </div>
+                <h2 className="mt-1 truncate text-base font-semibold text-zinc-100">
+                  {prompt.entryDescription || "(Untitled)"}
+                </h2>
+              </div>
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void choose("discard")}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2.5 text-left text-sm transition hover:border-rose-500/60 hover:bg-zinc-800 disabled:opacity-50"
-          >
-            <div className="font-medium text-zinc-100">버리기 (Discard)</div>
-            <div className="text-xs text-zinc-400">유휴 시작 시점으로 타이머를 종료합니다.</div>
-          </button>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void choose("discard_and_continue")}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2.5 text-left text-sm transition hover:border-indigo-500/60 hover:bg-zinc-800 disabled:opacity-50"
-          >
-            <div className="font-medium text-zinc-100">버리고 계속 (Discard &amp; Continue)</div>
-            <div className="text-xs text-zinc-400">
-              유휴 구간만 제외하고 복귀 시점부터 같은 작업으로 새 타이머를 시작합니다.
+              <div className="shrink-0 font-mono text-2xl font-semibold tracking-tight tabular-nums text-amber-300">
+                {idleDurLabel}
+              </div>
             </div>
-          </button>
 
-          <div className="rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
-            <input
-              type="text"
-              value={idleDescription}
-              onChange={(e) => setIdleDescription(e.target.value)}
-              placeholder="분리할 유휴 기록 설명 (비워두면 빈 기록)"
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
-            />
-            <label className="mt-2 flex items-center gap-2 text-xs text-zinc-300">
-              <input
-                type="checkbox"
-                checked={resumeOriginal}
-                onChange={(e) => setResumeOriginal(e.target.checked)}
-                className="rounded border-zinc-600 bg-zinc-900"
-              />
-              복귀 시점부터 원래 작업 타이머 자동 재개
-            </label>
+            {/* Visual Work -> Idle Timeline Bar */}
+            <div className="space-y-1.5">
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/[0.05]">
+                <div className="h-full w-[42%] bg-indigo-500/80" />
+                <div
+                  className="h-full flex-1 border-l border-amber-300/60"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.45), rgba(245, 158, 11, 0.45) 5px, rgba(245, 158, 11, 0.16) 5px, rgba(245, 158, 11, 0.16) 10px)",
+                  }}
+                />
+              </div>
+              <div className="flex items-center font-mono text-[10.5px] tabular-nums text-zinc-500">
+                <span className="w-[42%] text-right pr-1 text-zinc-400">{idleStartHm}</span>
+                <span className="flex-1 text-right text-amber-300/90">{returnedHm}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Scannable Action Options */}
+          <div className="space-y-2">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void choose("split")}
-              className="mt-2.5 w-full rounded-md bg-indigo-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-indigo-400 disabled:opacity-50"
+              onClick={() => void choose("keep")}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-indigo-500/40 hover:bg-white/[0.06] disabled:opacity-50"
             >
-              새 기록으로 분리 (Split)
+              <span className="flex items-center gap-2.5 text-sm font-medium text-zinc-100">
+                <Check className="h-4 w-4 text-indigo-400" />
+                <span>유지</span>
+              </span>
+              <span className="font-mono text-xs tabular-nums text-indigo-300">
+                +{idleDurLabel}
+              </span>
             </button>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void choose("discard")}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-rose-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2.5 text-sm font-medium text-zinc-100">
+                <Trash2 className="h-4 w-4 text-rose-400" />
+                <span>버리기</span>
+              </span>
+              <span className="font-mono text-xs tabular-nums text-zinc-400">
+                {idleStartHm} 종료
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void choose("discard_and_continue")}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-emerald-500/40 hover:bg-white/[0.06] disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2.5 text-sm font-medium text-zinc-100">
+                <Play className="h-4 w-4 text-emerald-400" />
+                <span>버리고 계속</span>
+              </span>
+              <span className="font-mono text-xs tabular-nums text-zinc-400">
+                {returnedHm} 재개
+              </span>
+            </button>
+
+            {/* Split Card */}
+            <div className="space-y-2.5 rounded-xl border border-white/[0.08] bg-black/25 p-3.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={idleDescription}
+                  onChange={(e) => setIdleDescription(e.target.value)}
+                  placeholder="유휴 구간 제목..."
+                  className="h-8 flex-1 rounded-lg border border-white/[0.08] bg-zinc-950/90 px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void choose("split")}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition-colors hover:bg-indigo-400 disabled:opacity-50"
+                >
+                  <Scissors className="h-3.5 w-3.5" />
+                  <span>분리</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={resumeOriginal}
+                onClick={() => setResumeOriginal((v) => !v)}
+                className="flex w-full items-center justify-between text-xs text-zinc-400"
+              >
+                <span>원래 작업 재개</span>
+                <span
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                    resumeOriginal ? "bg-indigo-500" : "bg-white/[0.12]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+                      resumeOriginal ? "translate-x-[14px]" : "translate-x-[2px]"
+                    }`}
+                  />
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

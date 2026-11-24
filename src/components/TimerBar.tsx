@@ -164,7 +164,6 @@ export function TimerBar({
       return matched;
     }
 
-    // Standard task + recent entry autocomplete.
     const q = parsedInline.description.trim().toLowerCase();
     const openTasks = tasks.filter((t) => t.status === 0);
     const matchedTasks = openTasks
@@ -395,8 +394,6 @@ export function TimerBar({
     setBusy(true);
     try {
       if (runningEntry) {
-        // Pressing Enter inside the description input while running saves live edits
-        // instead of unexpectedly stopping the timer; clicking Stop stops the timer.
         if (document.activeElement === inputRef.current) {
           await commitRunningEdits();
           setDropdownOpen(false);
@@ -456,7 +453,6 @@ export function TimerBar({
 
   async function handleProjectChange(projectId: string | null) {
     setSelectedProjectId(projectId);
-    // Clear linked task if it belongs to a different project.
     const nextTaskId =
       selectedTaskId && projectId && taskMap.get(selectedTaskId)?.projectId !== projectId
         ? null
@@ -490,14 +486,26 @@ export function TimerBar({
     parsedInline.tagNames.length > 0;
 
   return (
-    <header className="shrink-0 border-b border-zinc-800/80 bg-zinc-900/75 px-5 py-2.5 backdrop-blur">
-      <form onSubmit={handleSubmit} className="flex items-center gap-2.5">
+    <header
+      className={`relative shrink-0 border-b px-6 backdrop-blur-md transition-colors ${
+        runningEntry
+          ? "border-rose-500/20 bg-gradient-to-r from-rose-500/[0.06] via-[#101015] to-[#0d0d11]"
+          : "border-white/[0.06] bg-[#0e0e12]/90 focus-within:border-indigo-500/35 focus-within:bg-[#111117]"
+      }`}
+    >
+      {/* Active recording hairline accent */}
+      {runningEntry && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400/60 to-transparent" />
+      )}
+
+      <form onSubmit={handleSubmit} className="flex h-14 items-center gap-3">
+        {/* Seamless Command Input */}
         <div ref={wrapperRef} className="relative min-w-0 flex-1">
-          <div className="relative flex items-center">
+          <div className="flex items-center gap-2.5">
             {runningEntry && (
               <span
-                className="pointer-events-none absolute left-3 h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
-                title="타이머 실행 중 (입력하면 즉시 수정됩니다)"
+                className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]"
+                aria-hidden="true"
               />
             )}
             <input
@@ -523,30 +531,24 @@ export function TimerBar({
               onKeyDown={handleInputKeyDown}
               onChange={(e) => {
                 setDescription(e.target.value);
-                setCursorPos(e.target.selectionStart ?? e.target.value.length);
+                setCursorPos(e.currentTarget.selectionStart ?? e.target.value.length);
                 setDropdownOpen(true);
               }}
-              placeholder={
-                runningEntry
-                  ? "실행 중 작업 설명 수정... (@프로젝트 #태그)"
-                  : "무엇을 작업 중인가요? (TickTick 태스크 검색 또는 @프로젝트 #태그)"
-              }
-              className={`h-10 w-full rounded-lg border bg-zinc-950/90 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none ${
-                runningEntry ? "border-rose-500/40 pl-7" : "border-zinc-800 pl-3.5"
-              }`}
+              placeholder={runningEntry ? "작업 제목..." : "무엇을 작업 중인가요?"}
+              className="h-10 w-full bg-transparent text-[15px] font-medium text-zinc-100 placeholder:font-normal placeholder:text-zinc-500 focus:outline-none"
             />
           </div>
 
           {dropdownOpen && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-40 mt-1.5 max-h-80 overflow-y-auto rounded-xl border border-zinc-700/90 bg-zinc-900 p-1.5 shadow-2xl">
+            <div className="absolute left-0 right-0 top-full z-40 mt-2 max-h-80 overflow-y-auto rounded-xl border border-white/[0.1] bg-[#14141a]/98 p-1.5 shadow-2xl shadow-black/70 backdrop-blur-xl">
               {activeToken?.trigger === "@" && (
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  프로젝트 선택 (@)
+                <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                  프로젝트
                 </div>
               )}
               {activeToken?.trigger === "#" && (
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  태그 선택 (#)
+                <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                  태그
                 </div>
               )}
 
@@ -559,15 +561,15 @@ export function TimerBar({
                 return (
                   <div key={`${item.kind}-${idx}`}>
                     {showTaskHeader && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
                         <CheckSquare className="h-3 w-3 text-indigo-400" />
-                        TickTick 태스크
+                        TickTick
                       </div>
                     )}
                     {showRecentHeader && (
-                      <div className="mt-1 flex items-center gap-1.5 border-t border-zinc-800 px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                        <Clock className="h-3 w-3 text-zinc-400" />
-                        최근 시간 기록
+                      <div className="mt-1 flex items-center gap-1.5 border-t border-white/[0.06] px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                        <Clock className="h-3 w-3 text-zinc-500" />
+                        최근
                       </div>
                     )}
 
@@ -578,20 +580,22 @@ export function TimerBar({
                         void handleSelectSuggestion(item);
                       }}
                       onMouseEnter={() => setHighlightIdx(idx)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                        active ? "bg-indigo-500/20 text-zinc-100" : "text-zinc-300 hover:bg-zinc-800"
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                        active ? "bg-indigo-500/20 text-zinc-100" : "text-zinc-300 hover:bg-white/[0.05]"
                       }`}
                     >
                       {item.kind === "project" && (
                         <>
                           <span className="flex min-w-0 items-center gap-2">
                             <span
-                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              className="h-2 w-2 shrink-0 rounded-full"
                               style={{ backgroundColor: item.project.color ?? "#6366f1" }}
                             />
                             <span className="truncate font-medium">{item.project.name}</span>
                           </span>
-                          <span className="text-[10px] text-zinc-500">@{item.project.name}</span>
+                          <span className="font-mono text-[10px] text-zinc-500">
+                            @{item.project.name}
+                          </span>
                         </>
                       )}
 
@@ -601,7 +605,7 @@ export function TimerBar({
                             <TagIcon className="h-3 w-3 shrink-0 text-indigo-400" />
                             <span className="truncate">#{item.tag.name}</span>
                           </span>
-                          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                          <span className="text-[10px] text-zinc-500">
                             {item.tag.source === "ticktick" ? "TickTick" : "Local"}
                           </span>
                         </>
@@ -609,7 +613,8 @@ export function TimerBar({
 
                       {item.kind === "create-tag" && (
                         <span className="flex items-center gap-2 font-medium text-indigo-300">
-                          <Plus className="h-3.5 w-3.5" />새 로컬 태그 &ldquo;#{item.name}&rdquo; 생성
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>#{item.name}</span>
                         </span>
                       )}
 
@@ -626,7 +631,7 @@ export function TimerBar({
                             )}
                           </span>
                           {item.project && (
-                            <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-700/80 bg-zinc-950/70 px-2 py-0.5 text-[11px] text-zinc-300">
+                            <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-zinc-400">
                               <span
                                 className="h-2 w-2 rounded-full"
                                 style={{ backgroundColor: item.project.color ?? "#6366f1" }}
@@ -659,67 +664,75 @@ export function TimerBar({
           )}
         </div>
 
-        <ProjectPicker
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          onChange={(id) => void handleProjectChange(id)}
-        />
+        {/* Context Pickers */}
+        <div className="flex shrink-0 items-center gap-1">
+          <ProjectPicker
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onChange={(id) => void handleProjectChange(id)}
+          />
+          <TagPicker
+            tags={tags}
+            selectedTagIds={selectedTagIds}
+            onChange={(ids) => void handleTagsChange(ids)}
+            onCreateTag={onCreateTag}
+            onDeleteTag={onDeleteTag}
+          />
+        </div>
 
-        <TagPicker
-          tags={tags}
-          selectedTagIds={selectedTagIds}
-          onChange={(ids) => void handleTagsChange(ids)}
-          onCreateTag={onCreateTag}
-          onDeleteTag={onDeleteTag}
-        />
+        <div className="h-5 w-px shrink-0 bg-white/[0.08]" aria-hidden="true" />
 
+        {/* Live Elapsed Clock */}
         <div
-          className={`w-24 text-right font-mono text-base font-semibold tabular-nums ${
-            runningEntry ? "text-rose-300" : "text-zinc-200"
+          className={`w-[86px] shrink-0 text-right font-mono text-[17px] font-semibold tracking-tight tabular-nums transition-colors ${
+            runningEntry ? "text-rose-300" : "text-zinc-500"
           }`}
         >
           {formatDurationHms(elapsedMs)}
         </div>
 
+        {/* Primary Play / Stop Action */}
         <button
           type="button"
           disabled={busy}
           onClick={() => void handlePrimaryButtonClick()}
           aria-label={runningEntry ? "Stop timer" : "Start timer"}
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition disabled:opacity-50 ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition disabled:opacity-50 ${
             runningEntry
-              ? "bg-rose-500 hover:bg-rose-400"
-              : "bg-indigo-500 hover:bg-indigo-400"
+              ? "bg-rose-500 shadow-lg shadow-rose-500/25 hover:bg-rose-400"
+              : "bg-indigo-500 shadow-lg shadow-indigo-500/20 hover:bg-indigo-400"
           }`}
         >
           {runningEntry ? (
-            <Square className="h-4 w-4 fill-current" />
+            <Square className="h-3.5 w-3.5 fill-current" />
           ) : (
-            <Play className="ml-0.5 h-4 w-4 fill-current" />
+            <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
           )}
         </button>
 
+        {/* Quiet Mini Timer Trigger */}
         <button
           type="button"
           onClick={() => void onToggleMiniTimer()}
-          title="미니 타이머 열기/닫기 (Always on top)"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-zinc-200"
+          title="Mini Timer"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
         >
           <PictureInPicture2 className="h-4 w-4" />
         </button>
       </form>
 
+      {/* Compact Active Metadata Chips */}
       {showMetadataStrip && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1.5 pb-2.5 text-[11px]">
           {linkedTask && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-500/15 px-2.5 py-0.5 text-indigo-200">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/12 px-2.5 py-0.5 text-indigo-200 ring-1 ring-inset ring-indigo-500/25">
               <CheckSquare className="h-3 w-3 text-indigo-400" />
-              <span className="max-w-[240px] truncate">태스크: {linkedTask.title}</span>
+              <span className="max-w-[260px] truncate">{linkedTask.title}</span>
               <button
                 type="button"
                 onClick={() => void handleClearLinkedTask()}
-                className="text-indigo-300 hover:text-white"
-                title="태스크 연결 해제"
+                className="text-indigo-300/70 transition-colors hover:text-white"
+                title="연결 해제"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -732,17 +745,17 @@ export function TimerBar({
             return (
               <span
                 key={tag.id}
-                className="inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-800/80 px-2 py-0.5 text-zinc-200"
+                className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-zinc-300"
               >
                 <span
                   className="h-1.5 w-1.5 rounded-full"
                   style={{ backgroundColor: tag.color ?? "#6366f1" }}
                 />
-                #{tag.name}
+                <span>#{tag.name}</span>
                 <button
                   type="button"
                   onClick={() => void handleTagsChange(selectedTagIds.filter((id) => id !== tag.id))}
-                  className="text-zinc-400 hover:text-zinc-100"
+                  className="text-zinc-500 transition-colors hover:text-zinc-100"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
@@ -751,23 +764,37 @@ export function TimerBar({
           })}
 
           {parsedInline.projectHint && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
-              <FolderKanban className="h-3 w-3" />
-              {inlineMatchedProject
-                ? `@${inlineMatchedProject.name} 자동 지정`
-                : `@${parsedInline.projectHint} (일치 프로젝트 없음)`}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
+                inlineMatchedProject
+                  ? "bg-emerald-500/12 text-emerald-300 ring-1 ring-inset ring-emerald-500/25"
+                  : "bg-zinc-800/80 text-zinc-400 ring-1 ring-inset ring-white/[0.08]"
+              }`}
+            >
+              {inlineMatchedProject ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: inlineMatchedProject.color ?? "#10b981" }}
+                />
+              ) : (
+                <FolderKanban className="h-3 w-3 opacity-70" />
+              )}
+              <span>@{inlineMatchedProject ? inlineMatchedProject.name : parsedInline.projectHint}</span>
             </span>
           )}
 
-          {parsedInline.tagNames.map((name) => (
-            <span
-              key={`inline-${name}`}
-              className="inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-sky-300"
-            >
-              #{name}
-              {!matchTagByName(name, tags) && <span className="text-[9px] opacity-80">신규</span>}
-            </span>
-          ))}
+          {parsedInline.tagNames.map((name) => {
+            const isNew = !matchTagByName(name, tags);
+            return (
+              <span
+                key={`inline-${name}`}
+                className="inline-flex items-center gap-0.5 rounded-full bg-sky-500/12 px-2 py-0.5 text-sky-300 ring-1 ring-inset ring-sky-500/25"
+              >
+                {isNew && <Plus className="h-2.5 w-2.5" />}
+                <span>#{name}</span>
+              </span>
+            );
+          })}
         </div>
       )}
     </header>

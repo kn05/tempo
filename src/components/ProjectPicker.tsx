@@ -69,19 +69,19 @@ export function ProjectPicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={selected ? `프로젝트: ${selected.name}` : "TickTick 프로젝트 선택"}
-        className={`inline-flex items-center gap-1.5 rounded-lg border transition ${
-          compact ? "h-8 px-2.5 text-xs" : "h-9 px-2.5 text-xs"
+        title={selected ? selected.name : placeholder}
+        className={`inline-flex items-center gap-1.5 rounded-lg transition-colors ${
+          compact ? "h-8 px-2.5 text-xs" : "h-8 px-2.5 text-xs"
         } ${
           selected
-            ? "border-zinc-700 bg-zinc-800/80 text-zinc-100 hover:border-zinc-600"
-            : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+            ? "bg-white/[0.07] text-zinc-100 ring-1 ring-inset ring-white/[0.1] hover:bg-white/[0.11]"
+            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
         }`}
       >
         {selected ? (
           <>
             <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              className="h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: selected.color ?? "#6366f1" }}
             />
             <span className="max-w-[110px] truncate font-medium">{selected.name}</span>
@@ -96,18 +96,18 @@ export function ProjectPicker({
 
       {open && (
         <div
-          className={`absolute top-full z-40 mt-1.5 w-60 overflow-hidden rounded-xl border border-zinc-700/90 bg-zinc-900 shadow-2xl ${
+          className={`absolute top-full z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-white/[0.1] bg-[#14141a]/98 shadow-2xl shadow-black/70 backdrop-blur-xl ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-zinc-800 px-2.5 py-2">
+          <div className="flex items-center gap-2 border-b border-white/[0.07] px-2.5 py-2">
             <Search className="h-3.5 w-3.5 text-zinc-500" />
             <input
               ref={searchInputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="프로젝트 검색..."
+              placeholder="검색..."
               className="w-full bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
             />
             {query && (
@@ -125,20 +125,18 @@ export function ProjectPicker({
             <button
               type="button"
               onClick={() => selectProject(null)}
-              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                 selectedProjectId === null
                   ? "bg-indigo-500/15 text-indigo-300"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
               }`}
             >
-              <span>프로젝트 없음</span>
+              <span>없음</span>
               {selectedProjectId === null && <Check className="h-3.5 w-3.5" />}
             </button>
 
             {filtered.length === 0 ? (
-              <div className="px-2.5 py-4 text-center text-xs text-zinc-500">
-                일치하는 프로젝트가 없습니다.
-              </div>
+              <div className="px-2.5 py-4 text-center text-xs text-zinc-500">결과 없음</div>
             ) : (
               filtered.map((project) => {
                 const active = project.id === selectedProjectId;
@@ -147,10 +145,10 @@ export function ProjectPicker({
                     key={project.id}
                     type="button"
                     onClick={() => selectProject(project.id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                       active
                         ? "bg-indigo-500/15 text-indigo-200"
-                        : "text-zinc-200 hover:bg-zinc-800"
+                        : "text-zinc-200 hover:bg-white/[0.05]"
                     }`}
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -158,7 +156,7 @@ export function ProjectPicker({
                         <Inbox className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
                       ) : (
                         <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          className="h-2 w-2 shrink-0 rounded-full"
                           style={{ backgroundColor: project.color ?? "#6366f1" }}
                         />
                       )}

@@ -60,49 +60,13 @@ interface EditDraft {
   completeParentTask: boolean;
 }
 
-function SyncStatusBadge({ entry }: { entry: TimeEntry }) {
-  const styles: Record<SyncStatus, { label: string; cls: string }> = {
-    local: {
-      label: "local",
-      cls: "border-zinc-700/80 bg-zinc-800/70 text-zinc-400",
-    },
-    pending: {
-      label: "pending",
-      cls: "border-amber-500/40 bg-amber-500/15 text-amber-300",
-    },
-    synced: {
-      label: "synced",
-      cls: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
-    },
-    failed: {
-      label: "failed",
-      cls: "border-rose-500/40 bg-rose-500/15 text-rose-300",
-    },
-  };
-
-  const info = styles[entry.syncStatus];
-  return (
-    <div className="flex items-center gap-1">
-      <span
-        title={entry.syncError ?? `TickTick 동기화 상태: ${entry.syncStatus}`}
-        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${info.cls}`}
-      >
-        {entry.syncStatus === "synced" && <CheckCircle2 className="h-3 w-3" />}
-        {entry.syncStatus === "failed" && <AlertCircle className="h-3 w-3" />}
-        {entry.syncStatus === "pending" && <Clock className="h-3 w-3" />}
-        {info.label}
-      </span>
-      {entry.completeParentTask && (
-        <span
-          title="TickTick 동기화 시 원래 태스크도 완료 처리"
-          className="inline-flex items-center gap-0.5 rounded-full border border-indigo-500/40 bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300"
-        >
-          <Check className="h-2.5 w-2.5" />원 완료
-        </span>
-      )}
-    </div>
-  );
-}
+const SYNC_FILTER_OPTIONS: { id: SyncStatus | "all"; label: string; dotClass?: string }[] = [
+  { id: "all", label: "전체" },
+  { id: "local", label: "로컬", dotClass: "bg-zinc-500" },
+  { id: "pending", label: "대기", dotClass: "bg-amber-400" },
+  { id: "synced", label: "완료", dotClass: "bg-emerald-400" },
+  { id: "failed", label: "실패", dotClass: "bg-rose-400" },
+];
 
 export function TimerListView({
   entries,
@@ -213,18 +177,18 @@ export function TimerListView({
     event.preventDefault();
     const [y, m, d] = manualDate.split("-").map(Number);
     if (!y || !m || !d) {
-      setManualError("올바른 날짜를 입력하세요.");
+      setManualError("날짜 오류");
       return;
     }
     const baseTs = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
     const startedAt = applyTimeInputToDate(baseTs, manualStartHm);
     const endedAt = applyTimeInputToDate(baseTs, manualEndHm);
     if (startedAt === null || endedAt === null) {
-      setManualError("시작/종료 시각 형식이 올바르지 않습니다 (HH:MM).");
+      setManualError("시각 형식 오류");
       return;
     }
     if (endedAt < startedAt) {
-      setManualError("종료 시각은 시작 시각보다 같거나 늦어야 합니다.");
+      setManualError("종료 < 시작");
       return;
     }
 
@@ -264,7 +228,7 @@ export function TimerListView({
     if (!editDraft) return;
     const nextStart = applyTimeInputToDate(entry.startedAt, editDraft.startHm);
     if (nextStart === null) {
-      setEditError("시작 시각 형식이 올바르지 않습니다.");
+      setEditError("시작 시각 오류");
       return;
     }
 
@@ -272,11 +236,11 @@ export function TimerListView({
     if (entry.endedAt !== null) {
       const parsedEnd = applyTimeInputToDate(entry.endedAt, editDraft.endHm);
       if (parsedEnd === null) {
-        setEditError("종료 시각 형식이 올바르지 않습니다.");
+        setEditError("종료 시각 오류");
         return;
       }
       if (parsedEnd < nextStart) {
-        setEditError("종료 시각이 시작 시각보다 빠릅니다.");
+        setEditError("종료 < 시작");
         return;
       }
       nextEnd = parsedEnd;
@@ -307,75 +271,97 @@ export function TimerListView({
   );
 
   return (
-    <section className="mx-auto max-w-5xl space-y-5">
-      {/* Header & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Time Entries</h1>
-          <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
-            <span>
-              오늘 합계{" "}
-              <strong className="font-mono font-semibold text-indigo-300">
-                {formatDurationHms(todayTotalMs)}
-              </strong>
-            </span>
-            <span className="text-zinc-700">·</span>
-            <span>총 {filteredEntries.length}건 표시</span>
+    <section className="mx-auto max-w-5xl space-y-6">
+      {/* Hero Summary & Controls */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-baseline gap-4">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              오늘
+            </div>
+            <div className="mt-0.5 font-mono text-2xl font-semibold tracking-tight tabular-nums text-zinc-100">
+              {formatDurationHms(todayTotalMs)}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 pb-0.5">
             {pendingSyncCount > 0 && ticktickConnected && onProcessSyncQueue && (
               <button
                 type="button"
                 onClick={() => void onProcessSyncQueue()}
-                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300 hover:bg-amber-500/20"
+                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-amber-500/12 px-2.5 text-[11px] font-medium text-amber-300 ring-1 ring-inset ring-amber-500/25 transition-colors hover:bg-amber-500/20"
               >
                 <CloudUpload className="h-3 w-3" />
-                대기 {pendingSyncCount}건 전송
+                <span>전송 {pendingSyncCount}</span>
               </button>
             )}
             {failedSyncCount > 0 && onRetryFailedSyncs && (
               <button
                 type="button"
                 onClick={() => void onRetryFailedSyncs()}
-                className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-300 hover:bg-rose-500/20"
+                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-rose-500/12 px-2.5 text-[11px] font-medium text-rose-300 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/20"
               >
                 <RotateCw className="h-3 w-3" />
-                실패 {failedSyncCount}건 일괄 재시도
+                <span>재시도 {failedSyncCount}</span>
               </button>
             )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Compact Segmented Sync Filter */}
+          <div className="inline-flex h-8 items-center rounded-lg border border-white/[0.07] bg-white/[0.02] p-0.5 text-[11px]">
+            {SYNC_FILTER_OPTIONS.map((opt) => {
+              const active = syncFilter === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSyncFilter(opt.id)}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium transition-colors ${
+                    active
+                      ? "bg-white/[0.1] text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {opt.dotClass && <span className={`h-1.5 w-1.5 rounded-full ${opt.dotClass}`} />}
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="작업·프로젝트·태그 검색..."
-              className="h-9 w-52 rounded-lg border border-zinc-800 bg-zinc-900/90 pl-8 pr-3 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+              placeholder="검색..."
+              className="h-8 w-44 rounded-lg border border-white/[0.07] bg-white/[0.03] pl-8 pr-7 text-xs text-zinc-100 placeholder:text-zinc-500 transition-all focus:w-56 focus:border-indigo-500/60 focus:bg-white/[0.05] focus:outline-none"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
-
-          <select
-            value={syncFilter}
-            onChange={(e) => setSyncFilter(e.target.value as SyncStatus | "all")}
-            aria-label="동기화 상태 필터"
-            className="h-9 rounded-lg border border-zinc-800 bg-zinc-900/90 px-2.5 text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
-          >
-            <option value="all">동기화: 전체</option>
-            <option value="local">local</option>
-            <option value="pending">pending</option>
-            <option value="synced">synced</option>
-            <option value="failed">failed</option>
-          </select>
 
           <button
             type="button"
             onClick={openManualForm}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200 transition hover:border-indigo-500/60 hover:bg-zinc-800"
+            className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
+              showManualForm
+                ? "bg-indigo-500/20 text-indigo-200 ring-1 ring-inset ring-indigo-500/40"
+                : "border border-white/[0.08] bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08]"
+            }`}
           >
             <Plus className="h-3.5 w-3.5" />
-            수동 기록 추가
+            <span>기록 추가</span>
           </button>
         </div>
       </div>
@@ -384,35 +370,36 @@ export function TimerListView({
       {showManualForm && (
         <form
           onSubmit={(e) => void handleCreateManualSubmit(e)}
-          className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4"
+          className="space-y-3 rounded-xl border border-indigo-500/30 bg-[#121218] p-4 shadow-xl"
         >
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="text"
               value={manualDesc}
               onChange={(e) => setManualDesc(e.target.value)}
-              placeholder="완료한 작업 설명"
-              className="h-9 min-w-[220px] flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+              placeholder="작업 제목"
+              autoFocus
+              className="h-9 min-w-[220px] flex-1 rounded-lg border border-white/[0.08] bg-zinc-950/80 px-3 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500/70 focus:outline-none"
             />
             <input
               type="date"
               value={manualDate}
               onChange={(e) => setManualDate(e.target.value)}
-              className="h-9 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
+              className="h-9 rounded-lg border border-white/[0.08] bg-zinc-950/80 px-2.5 text-xs text-zinc-200 focus:border-indigo-500/70 focus:outline-none"
             />
             <div className="flex items-center gap-1.5">
               <input
                 type="time"
                 value={manualStartHm}
                 onChange={(e) => setManualStartHm(e.target.value)}
-                className="h-9 rounded-lg border border-zinc-800 bg-zinc-950 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
+                className="h-9 rounded-lg border border-white/[0.08] bg-zinc-950/80 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500/70 focus:outline-none"
               />
-              <span className="text-zinc-500">–</span>
+              <span className="text-zinc-600">–</span>
               <input
                 type="time"
                 value={manualEndHm}
                 onChange={(e) => setManualEndHm(e.target.value)}
-                className="h-9 rounded-lg border border-zinc-800 bg-zinc-950 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
+                className="h-9 rounded-lg border border-white/[0.08] bg-zinc-950/80 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500/70 focus:outline-none"
               />
             </div>
           </div>
@@ -439,9 +426,9 @@ export function TimerListView({
                     }
                   }
                 }}
-                className="h-8 max-w-[230px] rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                className="h-8 max-w-[230px] rounded-lg border border-white/[0.08] bg-zinc-950/80 px-2 text-xs text-zinc-300 focus:border-indigo-500/70 focus:outline-none"
               >
-                <option value="">TickTick 태스크 연결 안 함</option>
+                <option value="">태스크 없음</option>
                 {openTasks
                   .filter((t) => !manualProjectId || t.projectId === manualProjectId)
                   .map((task) => (
@@ -460,14 +447,14 @@ export function TimerListView({
                 align="left"
               />
               {manualTaskId && (
-                <label className="flex items-center gap-1.5 text-xs text-zinc-300">
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-300">
                   <input
                     type="checkbox"
                     checked={manualCompleteParent}
                     onChange={(e) => setManualCompleteParent(e.target.checked)}
-                    className="rounded border-zinc-600 bg-zinc-900"
+                    className="rounded border-zinc-600 bg-zinc-900 accent-indigo-500"
                   />
-                  원 작업도 완료 표시
+                  <span>원 태스크 완료</span>
                 </label>
               )}
             </div>
@@ -477,15 +464,15 @@ export function TimerListView({
               <button
                 type="button"
                 onClick={() => setShowManualForm(false)}
-                className="h-8 rounded-lg px-3 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                className="h-8 rounded-lg px-3 text-xs text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
               >
                 취소
               </button>
               <button
                 type="submit"
-                className="h-8 rounded-lg bg-indigo-500 px-3.5 text-xs font-medium text-white hover:bg-indigo-400"
+                className="h-8 rounded-lg bg-indigo-500 px-3.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400"
               >
-                기록 저장
+                저장
               </button>
             </div>
           </div>
@@ -494,40 +481,49 @@ export function TimerListView({
 
       {/* Date-Grouped Entry Lists */}
       {groupedByDay.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/40 p-12 text-center">
-          <p className="text-sm font-medium text-zinc-300">
-            {entries.length === 0
-              ? "아직 기록된 시간이 없습니다."
-              : "필터 조건에 일치하는 시간 기록이 없습니다."}
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01] py-16 text-center">
+          <Clock className="h-6 w-6 text-zinc-600" />
+          <p className="mt-3 text-sm font-medium text-zinc-400">
+            {entries.length === 0 ? "기록 없음" : "일치하는 기록 없음"}
           </p>
-          <p className="mt-1 text-xs text-zinc-500">
-            상단 타이머 바에서 작업을 시작하거나 Timeline 탭에서 자동 수집 블록을 변환해보세요.
-          </p>
+          {entries.length === 0 ? (
+            <button
+              type="button"
+              onClick={openManualForm}
+              className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.1]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              기록 추가
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setSyncFilter("all");
+              }}
+              className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/[0.1]"
+            >
+              필터 초기화
+            </button>
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-7">
           {groupedByDay.map((group) => (
-            <div
-              key={group.dateKey}
-              className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/50"
-            >
-              {/* Date Group Header */}
-              <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-zinc-200">
-                    {formatDayGroupLabel(group.dateKey)}
-                  </span>
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
-                    {group.items.length}
-                  </span>
-                </div>
-                <span className="font-mono text-xs font-semibold tabular-nums text-zinc-200">
+            <div key={group.dateKey} className="space-y-2">
+              {/* Airy Date Group Header */}
+              <div className="flex items-baseline justify-between px-4">
+                <h2 className="text-xs font-semibold tracking-tight text-zinc-400">
+                  {formatDayGroupLabel(group.dateKey)}
+                </h2>
+                <span className="font-mono text-xs font-semibold tabular-nums text-zinc-400">
                   {formatDurationHms(group.totalMs)}
                 </span>
               </div>
 
-              {/* Entries */}
-              <ul className="divide-y divide-zinc-800/60">
+              {/* Entry Surface */}
+              <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]">
                 {group.items.map((entry) => {
                   const isRunning = entry.endedAt === null;
                   const isEditing = editingId === entry.id && editDraft !== null;
@@ -537,11 +533,15 @@ export function TimerListView({
                   const linkedTask = entry.ticktickParentTaskId
                     ? (taskMap.get(entry.ticktickParentTaskId) ?? null)
                     : null;
+                  const showDistinctTaskTitle =
+                    Boolean(linkedTask) &&
+                    linkedTask!.title.trim().toLowerCase() !==
+                      entry.description.trim().toLowerCase();
                   const durationMs = Math.max(0, (entry.endedAt ?? nowMs) - entry.startedAt);
 
                   if (isEditing && editDraft) {
                     return (
-                      <li key={entry.id} className="space-y-3 bg-zinc-900/95 px-4 py-3.5">
+                      <li key={entry.id} className="space-y-3 bg-[#14141b] px-4 py-3.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <input
                             type="text"
@@ -559,7 +559,7 @@ export function TimerListView({
                               }
                             }}
                             autoFocus
-                            className="h-8 min-w-[220px] flex-1 rounded-lg border border-indigo-500/70 bg-zinc-950 px-2.5 text-sm text-zinc-100 focus:outline-none"
+                            className="h-8 min-w-[220px] flex-1 rounded-lg border border-indigo-500/60 bg-zinc-950/90 px-2.5 text-sm text-zinc-100 focus:outline-none"
                           />
 
                           <div className="flex items-center gap-1.5">
@@ -569,12 +569,13 @@ export function TimerListView({
                               onChange={(e) =>
                                 setEditDraft({ ...editDraft, startHm: e.target.value })
                               }
-                              className="h-8 rounded-lg border border-zinc-700 bg-zinc-950 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
+                              className="h-8 rounded-lg border border-white/[0.1] bg-zinc-950/90 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500/70 focus:outline-none"
                             />
-                            <span className="text-zinc-500">–</span>
+                            <span className="text-zinc-600">–</span>
                             {isRunning ? (
-                              <span className="rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300">
-                                실행 중
+                              <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/15 px-2.5 text-xs font-medium text-rose-300">
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400" />
+                                진행 중
                               </span>
                             ) : (
                               <input
@@ -583,7 +584,7 @@ export function TimerListView({
                                 onChange={(e) =>
                                   setEditDraft({ ...editDraft, endHm: e.target.value })
                                 }
-                                className="h-8 rounded-lg border border-zinc-700 bg-zinc-950 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500 focus:outline-none"
+                                className="h-8 rounded-lg border border-white/[0.1] bg-zinc-950/90 px-2 font-mono text-xs text-zinc-200 focus:border-indigo-500/70 focus:outline-none"
                               />
                             )}
                           </div>
@@ -629,9 +630,9 @@ export function TimerListView({
                                     : prev,
                                 );
                               }}
-                              className="h-8 max-w-[230px] rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                              className="h-8 max-w-[230px] rounded-lg border border-white/[0.08] bg-zinc-950/90 px-2 text-xs text-zinc-300 focus:border-indigo-500/70 focus:outline-none"
                             >
-                              <option value="">TickTick 태스크 없음</option>
+                              <option value="">태스크 없음</option>
                               {openTasks
                                 .filter(
                                   (t) =>
@@ -657,7 +658,7 @@ export function TimerListView({
                             />
 
                             {editDraft.taskId && (
-                              <label className="flex items-center gap-1.5 text-xs text-zinc-300">
+                              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-300">
                                 <input
                                   type="checkbox"
                                   checked={editDraft.completeParentTask}
@@ -667,9 +668,9 @@ export function TimerListView({
                                       completeParentTask: e.target.checked,
                                     })
                                   }
-                                  className="rounded border-zinc-600 bg-zinc-900"
+                                  className="rounded border-zinc-600 bg-zinc-900 accent-indigo-500"
                                 />
-                                원 작업 완료 표시
+                                <span>원 태스크 완료</span>
                               </label>
                             )}
                           </div>
@@ -680,22 +681,21 @@ export function TimerListView({
                             )}
                             <button
                               type="button"
-                              onClick={() => void saveEditing(entry)}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white hover:bg-indigo-400"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                              저장
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => {
                                 setEditingId(null);
                                 setEditDraft(null);
                               }}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg bg-zinc-800 px-2.5 text-xs text-zinc-300 hover:bg-zinc-700"
+                              className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
                             >
-                              <X className="h-3.5 w-3.5" />
                               취소
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void saveEditing(entry)}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition-colors hover:bg-indigo-400"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              저장
                             </button>
                           </div>
                         </div>
@@ -706,149 +706,192 @@ export function TimerListView({
                   return (
                     <li
                       key={entry.id}
-                      className={`group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition hover:bg-zinc-800/35 ${
+                      className={`group relative flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-white/[0.03] ${
                         isRunning ? "bg-rose-500/[0.04]" : ""
                       }`}
                     >
-                      {/* Left: Description, Project, Task, Tags */}
+                      {/* Subtle left project / running color bar */}
+                      <span
+                        className={`absolute bottom-2 left-0 top-2 w-[2.5px] rounded-r-full ${
+                          isRunning ? "bg-rose-500" : ""
+                        }`}
+                        style={
+                          !isRunning && project
+                            ? { backgroundColor: project.color ?? "#6366f1", opacity: 0.75 }
+                            : undefined
+                        }
+                      />
+
+                      {/* Left: Primary Description + Quiet Secondary Context */}
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           {isRunning && (
                             <span
                               className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-rose-500"
-                              title="실행 중"
+                              aria-hidden="true"
                             />
                           )}
+
                           <button
                             type="button"
                             onClick={() => startEditing(entry)}
-                            className="max-w-full truncate text-left text-sm font-medium text-zinc-100 hover:text-indigo-300"
-                            title="클릭하여 편집"
+                            className="max-w-full truncate text-left text-[13.5px] font-medium text-zinc-100 transition-colors hover:text-indigo-300"
                           >
                             {entry.description || "(Untitled)"}
                           </button>
 
+                          {linkedTask && !showDistinctTaskTitle && (
+                            <span
+                              title={
+                                entry.completeParentTask
+                                  ? `${linkedTask.title} · 완료 동기화`
+                                  : linkedTask.title
+                              }
+                              className="inline-flex shrink-0 items-center text-indigo-400/80"
+                            >
+                              <CheckSquare className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+
                           {project && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+                            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-zinc-400">
                               <span
-                                className="h-2 w-2 rounded-full"
+                                className="h-1.5 w-1.5 rounded-full"
                                 style={{ backgroundColor: project.color ?? "#6366f1" }}
                               />
-                              {project.name}
+                              <span>{project.name}</span>
                             </span>
+                          )}
+
+                          {entry.tagIds.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {entry.tagIds.map((tid) => {
+                                const tag = tagMap.get(tid);
+                                if (!tag) return null;
+                                return (
+                                  <span
+                                    key={tag.id}
+                                    className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10.5px] text-zinc-400"
+                                  >
+                                    #{tag.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
 
-                        {(linkedTask || entry.tagIds.length > 0) && (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {linkedTask && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
-                                <CheckSquare className="h-3 w-3 text-indigo-400" />
-                                <span className="max-w-[260px] truncate">{linkedTask.title}</span>
-                              </span>
-                            )}
-                            {entry.tagIds.map((tid) => {
-                              const tag = tagMap.get(tid);
-                              if (!tag) return null;
-                              return (
-                                <span
-                                  key={tag.id}
-                                  className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-1.5 py-0.5 text-[10px] text-zinc-300"
-                                >
-                                  <span
-                                    className="h-1.5 w-1.5 rounded-full"
-                                    style={{ backgroundColor: tag.color ?? "#6366f1" }}
-                                  />
-                                  #{tag.name}
-                                </span>
-                              );
-                            })}
+                        {showDistinctTaskTitle && linkedTask && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                            <CheckSquare className="h-3 w-3 shrink-0 text-indigo-400/75" />
+                            <span className="truncate">{linkedTask.title}</span>
                           </div>
                         )}
 
                         {entry.syncStatus === "failed" && entry.syncError && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-rose-400/90">
+                          <div className="flex items-center gap-2 text-[11px] text-rose-400/90">
                             <AlertCircle className="h-3 w-3 shrink-0" />
-                            <span className="truncate">
-                              {entry.syncError}
-                              {entry.retryCount > 0 ? ` (재시도 ${entry.retryCount}회)` : ""}
-                            </span>
+                            <span className="truncate">{entry.syncError}</span>
+                            <button
+                              type="button"
+                              onClick={() => void onRequestTickTickSync(entry)}
+                              className="shrink-0 font-medium text-rose-300 underline decoration-rose-400/50 underline-offset-2 hover:text-rose-200"
+                            >
+                              재시도
+                            </button>
                           </div>
                         )}
                       </div>
 
-                      {/* Right: Sync Badge, Time Range, Duration, Actions */}
+                      {/* Right: Sync Status, Time Range <-> Hover Actions, Anchored Duration */}
                       <div className="flex shrink-0 items-center gap-3">
-                        <SyncStatusBadge entry={entry} />
+                        <div className="relative flex h-7 min-w-[116px] items-center justify-end">
+                          {/* At rest: sync indicator + time range */}
+                          <div className="flex items-center gap-2.5 transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
+                            {entry.syncStatus === "synced" && (
+                              <span title="TickTick 동기화 완료">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400/80" />
+                              </span>
+                            )}
+                            {entry.syncStatus === "pending" && (
+                              <span title="동기화 대기 중">
+                                <Clock className="h-3.5 w-3.5 text-amber-400/90" />
+                              </span>
+                            )}
+                            {entry.syncStatus === "failed" && (
+                              <span title={entry.syncError ?? "동기화 실패"}>
+                                <AlertCircle className="h-3.5 w-3.5 text-rose-400" />
+                              </span>
+                            )}
+                            <span className="hidden font-mono text-xs tabular-nums text-zinc-500 sm:inline">
+                              {formatTimeHm(entry.startedAt)}–
+                              {entry.endedAt !== null ? formatTimeHm(entry.endedAt) : "지금"}
+                            </span>
+                          </div>
 
-                        <span className="hidden font-mono text-xs tabular-nums text-zinc-500 md:inline">
-                          {formatTimeHm(entry.startedAt)} –{" "}
-                          {entry.endedAt !== null ? formatTimeHm(entry.endedAt) : "실행 중"}
-                        </span>
+                          {/* On hover / focus: clean inline action bar */}
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => void onStartSimilar(entry)}
+                              title="이어서 시작"
+                              className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-indigo-500/15 hover:text-indigo-300"
+                            >
+                              <Play className="h-3.5 w-3.5 fill-current" />
+                            </button>
+
+                            {!isRunning && entry.syncStatus !== "synced" && (
+                              <button
+                                type="button"
+                                onClick={() => void onRequestTickTickSync(entry)}
+                                title={
+                                  entry.syncStatus === "failed"
+                                    ? "동기화 재시도"
+                                    : "TickTick 동기화"
+                                }
+                                className={`rounded-md p-1.5 transition-colors ${
+                                  entry.syncStatus === "failed"
+                                    ? "text-rose-400 hover:bg-rose-500/15"
+                                    : entry.syncStatus === "pending"
+                                      ? "text-amber-300 hover:bg-amber-500/15"
+                                      : "text-zinc-400 hover:bg-emerald-500/15 hover:text-emerald-300"
+                                }`}
+                              >
+                                {entry.syncStatus === "failed" ? (
+                                  <RotateCw className="h-3.5 w-3.5" />
+                                ) : (
+                                  <CloudUpload className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => startEditing(entry)}
+                              title="편집"
+                              className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-zinc-200"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void onDeleteEntry(entry.id)}
+                              title="삭제"
+                              className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-rose-500/15 hover:text-rose-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
 
                         <span
-                          className={`w-20 text-right font-mono text-sm font-medium tabular-nums ${
-                            isRunning ? "text-rose-300" : "text-zinc-200"
+                          className={`w-[72px] text-right font-mono text-[13.5px] font-semibold tabular-nums ${
+                            isRunning ? "text-rose-300" : "text-zinc-100"
                           }`}
                         >
                           {formatDurationHms(durationMs)}
                         </span>
-
-                        <div className="flex items-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => void onStartSimilar(entry)}
-                            title="이 작업으로 이어서 시작"
-                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-indigo-500/15 hover:text-indigo-300"
-                          >
-                            <Play className="h-3.5 w-3.5 fill-current" />
-                          </button>
-
-                          {!isRunning && entry.syncStatus !== "synced" && (
-                            <button
-                              type="button"
-                              onClick={() => void onRequestTickTickSync(entry)}
-                              title={
-                                entry.syncStatus === "failed"
-                                  ? "TickTick 동기화 재시도"
-                                  : entry.syncStatus === "pending"
-                                    ? "동기화 대기 중 (지금 다시 큐 깨우기)"
-                                    : "TickTick에 밀어넣기"
-                              }
-                              className={`rounded-md p-1.5 transition ${
-                                entry.syncStatus === "failed"
-                                  ? "text-rose-400 hover:bg-rose-500/15"
-                                  : entry.syncStatus === "pending"
-                                    ? "text-amber-300 hover:bg-amber-500/15"
-                                    : "text-zinc-400 hover:bg-emerald-500/15 hover:text-emerald-300"
-                              }`}
-                            >
-                              {entry.syncStatus === "failed" ? (
-                                <RotateCw className="h-3.5 w-3.5" />
-                              ) : (
-                                <CloudUpload className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => startEditing(entry)}
-                            title="편집"
-                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void onDeleteEntry(entry.id)}
-                            title="삭제"
-                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-rose-500/15 hover:text-rose-400"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
                       </div>
                     </li>
                   );

@@ -4,8 +4,6 @@ import {
   Check,
   CheckCircle2,
   CheckSquare,
-  Cloud,
-  CloudOff,
   CloudUpload,
   Copy,
   ExternalLink,
@@ -19,11 +17,10 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  Tag as TagIcon,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { formatDateKey, formatTimeHms } from "../lib/time";
+import { formatTimeHm } from "../lib/time";
 import type {
   OAuthLoginStartResult,
   SaveOAuthConfigInput,
@@ -49,15 +46,10 @@ interface TickTickViewProps {
   onRetryFailed: () => Promise<TickTickSyncBatchResult>;
 }
 
-function formatLastSyncLabel(ts: number | null): string {
-  if (!ts) return "아직 Pull 기록 없음";
-  return `${formatDateKey(ts)} ${formatTimeHms(ts)}`;
-}
-
 function formatDueDateShort(raw: string | null): string | null {
   if (!raw) return null;
   const datePart = raw.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart.slice(5);
   return null;
 }
 
@@ -79,7 +71,6 @@ export function TickTickView({
   const [searchQuery, setSearchQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
 
-  // Auth & configuration UI state
   const [authTab, setAuthTab] = useState<"oauth2" | "token">("oauth2");
   const [showOAuthConfig, setShowOAuthConfig] = useState(false);
   const [oauthClientId, setOauthClientId] = useState("");
@@ -128,7 +119,7 @@ export function TickTickView({
       setCopiedKey(key);
       window.setTimeout(() => setCopiedKey((prev) => (prev === key ? null : prev)), 2000);
     } catch {
-      // Ignore clipboard permission errors in restricted contexts.
+      // Ignore clipboard permission errors.
     }
   }
 
@@ -141,9 +132,10 @@ export function TickTickView({
       await onSaveOAuthConfig({
         clientId: oauthClientId.trim(),
         clientSecret: oauthClientSecret.trim() ? oauthClientSecret.trim() : null,
-        redirectPort: Number.isFinite(parsedPort) && parsedPort >= 0 && parsedPort <= 65535
-          ? parsedPort
-          : 18492,
+        redirectPort:
+          Number.isFinite(parsedPort) && parsedPort >= 0 && parsedPort <= 65535
+            ? parsedPort
+            : 18492,
       });
       setOauthClientSecret("");
       setShowOAuthConfig(false);
@@ -169,7 +161,7 @@ export function TickTickView({
   async function handleConnectToken(event: FormEvent) {
     event.preventDefault();
     if (!personalToken.trim()) {
-      setActionError("Personal API Token을 입력해주세요.");
+      setActionError("API Token을 입력하세요.");
       return;
     }
     setBusyAction("token-login");
@@ -239,110 +231,81 @@ export function TickTickView({
   const syncedCount = status?.queue.syncedCount ?? 0;
 
   return (
-    <section className="mx-auto max-w-5xl space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100">TickTick 연동 &amp; 할 일 목록</h1>
-          <p className="text-xs text-zinc-500">
-            캐시된 프로젝트 {projects.length}개 · 미완료 태스크 {openTasks.length}개 · 마지막 Pull:{" "}
-            <span className="font-mono text-zinc-400">
-              {formatLastSyncLabel(status?.lastPullAt ?? null)}
-            </span>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300">
-            <input
-              type="checkbox"
-              checked={showCompleted}
-              onChange={(e) => setShowCompleted(e.target.checked)}
-              className="rounded border-zinc-600 bg-zinc-950"
-            />
-            완료 포함
-          </label>
-
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="태스크 검색..."
-              className="h-9 w-52 rounded-lg border border-zinc-800 bg-zinc-900 pl-8 pr-3 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* TickTick Connection & Sync Queue Control Card */}
-      <div className="space-y-4 rounded-xl border border-zinc-800/90 bg-zinc-900/65 p-4">
+    <section className="mx-auto max-w-5xl space-y-5">
+      {/* Compact Connection & Sync Strip */}
+      <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            {connected ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                <Cloud className="h-3.5 w-3.5" />
-                연결됨 · {status?.authMethod === "oauth2" ? "OAuth2" : "Personal API Token"}
-              </span>
-            ) : authInProgress ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                브라우저 OAuth2 인증 대기 중
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                <CloudOff className="h-3.5 w-3.5 text-zinc-400" />
-                연결 안 됨 (오프라인 로컬 모드)
-              </span>
-            )}
+          {/* Left: Connection State + Sync Counters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              {connected ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/25">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span>{status?.authMethod === "oauth2" ? "OAuth2" : "API Token"}</span>
+                  <span title="OS Keyring 보관">
+                    <ShieldCheck className="h-3 w-3 text-emerald-400/80" />
+                  </span>
+                </span>
+              ) : authInProgress ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/12 px-2.5 py-1 text-xs font-medium text-sky-300 ring-1 ring-inset ring-sky-500/25">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>인증 중</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
+                  <span>오프라인</span>
+                </span>
+              )}
+            </div>
 
-            <div className="flex items-center gap-1.5 text-[11px]">
-              <span className="rounded-md border border-zinc-800 bg-zinc-950/70 px-2 py-0.5 text-zinc-400">
-                동기화 완료 <strong className="font-mono text-emerald-300">{syncedCount}</strong>
+            <div className="h-4 w-px bg-white/[0.07]" aria-hidden="true" />
+
+            {/* Compact Queue Counters */}
+            <div className="flex items-center gap-3 text-xs tabular-nums">
+              <span className="flex items-center gap-1.5 text-zinc-400" title="동기화 완료">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
+                <span className="font-mono font-medium text-zinc-200">{syncedCount}</span>
               </span>
               <span
-                className={`rounded-md border px-2 py-0.5 ${
-                  pendingCount > 0
-                    ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-                    : "border-zinc-800 bg-zinc-950/70 text-zinc-400"
-                }`}
+                className={`flex items-center gap-1.5 ${pendingCount > 0 ? "text-amber-300" : "text-zinc-500"}`}
+                title="대기 중"
               >
-                대기 <strong className="font-mono">{pendingCount}</strong>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${pendingCount > 0 ? "bg-amber-400" : "bg-zinc-700"}`}
+                />
+                <span className="font-mono font-medium">{pendingCount}</span>
               </span>
               <span
-                className={`rounded-md border px-2 py-0.5 ${
-                  failedCount > 0
-                    ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
-                    : "border-zinc-800 bg-zinc-950/70 text-zinc-400"
-                }`}
+                className={`flex items-center gap-1.5 ${failedCount > 0 ? "text-rose-300" : "text-zinc-500"}`}
+                title="실패"
               >
-                실패 <strong className="font-mono">{failedCount}</strong>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${failedCount > 0 ? "bg-rose-400" : "bg-zinc-700"}`}
+                />
+                <span className="font-mono font-medium">{failedCount}</span>
               </span>
             </div>
+
+            {status?.lastPullAt && (
+              <span className="hidden font-mono text-[11px] tabular-nums text-zinc-500 sm:inline">
+                {formatTimeHm(status.lastPullAt)}
+              </span>
+            )}
           </div>
 
-          {connected && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={busyAction !== null}
-                onClick={() => void handlePull()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition hover:bg-indigo-400 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${busyAction === "pull" ? "animate-spin" : ""}`} />
-                지금 Pull
-              </button>
-
+          {/* Right: Contextual Actions */}
+          {connected ? (
+            <div className="flex flex-wrap items-center gap-1.5">
               {pendingCount > 0 && (
                 <button
                   type="button"
                   disabled={busyAction !== null}
                   onClick={() => void handleProcessQueue()}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 text-xs font-medium text-amber-200 transition hover:bg-amber-500/25 disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-500/15 px-2.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-500/25 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
                 >
                   <CloudUpload className="h-3.5 w-3.5" />
-                  대기 큐 전송 ({pendingCount})
+                  <span>전송 {pendingCount}</span>
                 </button>
               )}
 
@@ -351,258 +314,236 @@ export function TickTickView({
                   type="button"
                   disabled={busyAction !== null}
                   onClick={() => void handleRetryFailed()}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 text-xs font-medium text-rose-200 transition hover:bg-rose-500/25 disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/15 px-2.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/25 disabled:opacity-50"
                 >
-                  <RotateCw className={`h-3.5 w-3.5 ${busyAction === "retry" ? "animate-spin" : ""}`} />
-                  실패 재시도 ({failedCount})
+                  <RotateCw
+                    className={`h-3.5 w-3.5 ${busyAction === "retry" ? "animate-spin" : ""}`}
+                  />
+                  <span>재시도 {failedCount}</span>
                 </button>
               )}
 
               <button
                 type="button"
                 disabled={busyAction !== null}
+                onClick={() => void handlePull()}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition-colors hover:bg-indigo-400 disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${busyAction === "pull" ? "animate-spin" : ""}`}
+                />
+                <span>Pull</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={busyAction !== null}
                 onClick={() => void handleDisconnect()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 text-xs text-zinc-300 transition hover:border-rose-500/50 hover:text-rose-300 disabled:opacity-50"
+                title="연결 해제"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-50"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                연결 해제
               </button>
             </div>
-          )}
-        </div>
-
-        {/* Security Notice when connected */}
-        {connected && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/80 pt-3 text-[11px] text-zinc-400">
-            <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              인증 토큰은 OS 자격 증명 저장소(Keyring)에만 보관되며 SQLite에 평문 저장되지 않습니다.
-            </span>
-            <span className="font-mono text-zinc-500">
-              타임존: {status?.detectedTimeZone ?? "UTC"}
-            </span>
-          </div>
-        )}
-
-        {/* Active OAuth2 Pending Flow Banner */}
-        {authInProgress && status?.pendingAuthorizeUrl && (
-          <div className="space-y-2 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-xs text-sky-100">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 font-medium">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400" />
-                브라우저에서 TickTick 인증을 완료하면 자동으로 연결됩니다 (PKCE + State 검증).
-              </span>
-              <button
-                type="button"
-                onClick={() => void onCancelOAuthLogin()}
-                className="inline-flex items-center gap-1 rounded-md border border-sky-400/40 px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-500/20"
-              >
-                <X className="h-3 w-3" />
-                취소
-              </button>
-            </div>
+          ) : (
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={status.pendingAuthorizeUrl}
-                className="h-7 flex-1 rounded border border-sky-500/30 bg-zinc-950/90 px-2 font-mono text-[11px] text-sky-200"
-              />
-              <button
-                type="button"
-                onClick={() => void copyText("auth-url", status.pendingAuthorizeUrl!)}
-                className="inline-flex h-7 items-center gap-1 rounded border border-sky-500/40 bg-zinc-950/70 px-2 text-[11px] text-sky-200 hover:bg-sky-500/20"
-              >
-                {copiedKey === "auth-url" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copiedKey === "auth-url" ? "복사됨" : "URL 복사"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Disconnected Login Controls */}
-        {!connected && (
-          <div className="space-y-3 border-t border-zinc-800/80 pt-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs">
+              <div className="inline-flex h-8 items-center rounded-lg border border-white/[0.08] bg-black/30 p-0.5 text-[11px]">
                 <button
                   type="button"
                   onClick={() => setAuthTab("oauth2")}
-                  className={`rounded-md px-3 py-1.5 font-medium transition ${
+                  className={`h-7 rounded-md px-2.5 font-medium transition-colors ${
                     authTab === "oauth2"
-                      ? "bg-indigo-500 text-white"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-white/[0.1] text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  OAuth2 루프백 로그인
+                  OAuth2
                 </button>
                 <button
                   type="button"
                   onClick={() => setAuthTab("token")}
-                  className={`rounded-md px-3 py-1.5 font-medium transition ${
+                  className={`h-7 rounded-md px-2.5 font-medium transition-colors ${
                     authTab === "token"
-                      ? "bg-indigo-500 text-white"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-white/[0.1] text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  Personal API Token
+                  API Token
                 </button>
               </div>
-
-              {authTab === "oauth2" && (
-                <button
-                  type="button"
-                  onClick={() => setShowOAuthConfig((v) => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-300 hover:border-zinc-700 hover:text-zinc-100"
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                  OAuth2 앱 설정 {status?.oauthConfigured ? "(구성됨)" : "(필요)"}
-                </button>
-              )}
             </div>
+          )}
+        </div>
 
-            {authTab === "oauth2" && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3.5 py-3">
-                  <div className="space-y-1 text-xs">
-                    <div className="font-medium text-zinc-200">
-                      루프백 리다이렉트 + PKCE(S256) 보안 로그인
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
-                      <span>TickTick Developer Portal에 등록할 Redirect URL:</span>
-                      <code className="rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-indigo-300">
-                        {status?.oauthRedirectUri ?? "http://127.0.0.1:18492/callback"}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void copyText(
-                            "redirect-uri",
-                            status?.oauthRedirectUri ?? "http://127.0.0.1:18492/callback",
-                          )
-                        }
-                        className="rounded p-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                        title="Redirect URI 복사"
-                      >
-                        {copiedKey === "redirect-uri" ? (
-                          <Check className="h-3 w-3 text-emerald-400" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </button>
-                    </div>
+        {/* Active OAuth2 Pending Flow */}
+        {authInProgress && status?.pendingAuthorizeUrl && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 p-2.5 text-xs">
+            <input
+              type="text"
+              readOnly
+              value={status.pendingAuthorizeUrl}
+              className="h-7 min-w-[200px] flex-1 rounded-md border border-sky-500/25 bg-zinc-950/90 px-2 font-mono text-[11px] text-sky-200 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void copyText("auth-url", status.pendingAuthorizeUrl!)}
+              className="inline-flex h-7 items-center gap-1 rounded-md bg-sky-500/20 px-2 text-[11px] text-sky-200 transition-colors hover:bg-sky-500/30"
+            >
+              {copiedKey === "auth-url" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              <span>{copiedKey === "auth-url" ? "복사됨" : "복사"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void onCancelOAuthLogin()}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-sky-300 transition-colors hover:bg-sky-500/20"
+            >
+              <X className="h-3 w-3" />
+              <span>취소</span>
+            </button>
+          </div>
+        )}
+
+        {/* Disconnected Compact Auth Bar */}
+        {!connected && (
+          <div className="space-y-2.5 border-t border-white/[0.06] pt-3">
+            {authTab === "oauth2" ? (
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <span>Redirect</span>
+                    <code className="rounded-md bg-black/40 px-2 py-1 font-mono text-zinc-300">
+                      {status?.oauthRedirectUri ?? "http://127.0.0.1:18492/callback"}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyText(
+                          "redirect-uri",
+                          status?.oauthRedirectUri ?? "http://127.0.0.1:18492/callback",
+                        )
+                      }
+                      className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+                      title="복사"
+                    >
+                      {copiedKey === "redirect-uri" ? (
+                        <Check className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={busyAction !== null || authInProgress}
-                    onClick={() => {
-                      if (!status?.oauthConfigured) {
-                        setShowOAuthConfig(true);
-                        return;
-                      }
-                      void handleStartOAuth();
-                    }}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 text-xs font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {status?.oauthConfigured ? "OAuth2로 로그인" : "OAuth2 앱 정보 입력"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {status?.oauthConfigured && (
+                      <button
+                        type="button"
+                        onClick={() => setShowOAuthConfig((v) => !v)}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs transition-colors ${
+                          showOAuthConfig
+                            ? "bg-white/[0.1] text-zinc-100"
+                            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+                        }`}
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                        <span>앱 설정</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={busyAction !== null || authInProgress}
+                      onClick={() => {
+                        if (!status?.oauthConfigured) {
+                          setShowOAuthConfig(true);
+                          return;
+                        }
+                        void handleStartOAuth();
+                      }}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 disabled:opacity-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>로그인</span>
+                    </button>
+                  </div>
                 </div>
 
                 {(showOAuthConfig || !status?.oauthConfigured) && (
                   <form
                     onSubmit={(e) => void handleSaveOAuth(e)}
-                    className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3.5"
+                    className="flex flex-wrap items-end gap-2 rounded-lg bg-black/25 p-3"
                   >
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <label className="block space-y-1 text-xs">
-                        <span className="text-zinc-400">Client ID</span>
-                        <input
-                          type="text"
-                          value={oauthClientId}
-                          onChange={(e) => setOauthClientId(e.target.value)}
-                          placeholder="TickTick Developer Client ID"
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </label>
+                    <label className="min-w-[160px] flex-1 space-y-1 text-[11px]">
+                      <span className="text-zinc-500">Client ID</span>
+                      <input
+                        type="text"
+                        value={oauthClientId}
+                        onChange={(e) => setOauthClientId(e.target.value)}
+                        placeholder="Client ID"
+                        className="h-8 w-full rounded-lg border border-white/[0.08] bg-zinc-950/90 px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
+                      />
+                    </label>
 
-                      <label className="block space-y-1 text-xs">
-                        <span className="text-zinc-400">
-                          Client Secret {status?.hasClientSecret ? "(Keyring 저장됨)" : ""}
-                        </span>
-                        <input
-                          type="password"
-                          value={oauthClientSecret}
-                          onChange={(e) => setOauthClientSecret(e.target.value)}
-                          placeholder={
-                            status?.hasClientSecret
-                              ? "변경 시에만 새로 입력"
-                              : "OS Keyring에 안전 보관"
-                          }
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </label>
-
-                      <label className="block space-y-1 text-xs">
-                        <span className="text-zinc-400">Callback Port (0 = 임시 포트)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={65535}
-                          value={oauthPort}
-                          onChange={(e) => setOauthPort(e.target.value)}
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-500">
-                        Client Secret은 Windows Credential Manager / OS Keyring에만 저장됩니다.
+                    <label className="min-w-[160px] flex-1 space-y-1 text-[11px]">
+                      <span className="flex items-center gap-1.5 text-zinc-500">
+                        <span>Client Secret</span>
+                        {status?.hasClientSecret && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="저장됨" />
+                        )}
                       </span>
-                      <button
-                        type="submit"
-                        disabled={busyAction !== null}
-                        className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
-                      >
-                        OAuth2 설정 저장
-                      </button>
-                    </div>
+                      <input
+                        type="password"
+                        value={oauthClientSecret}
+                        onChange={(e) => setOauthClientSecret(e.target.value)}
+                        placeholder={status?.hasClientSecret ? "••••••••" : "Client Secret"}
+                        className="h-8 w-full rounded-lg border border-white/[0.08] bg-zinc-950/90 px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
+                      />
+                    </label>
+
+                    <label className="w-24 space-y-1 text-[11px]">
+                      <span className="text-zinc-500">Port</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={65535}
+                        value={oauthPort}
+                        onChange={(e) => setOauthPort(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-white/[0.08] bg-zinc-950/90 px-2.5 font-mono text-xs text-zinc-100 focus:border-indigo-500/70 focus:outline-none"
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={busyAction !== null}
+                      className="h-8 rounded-lg bg-white/[0.1] px-3 text-xs font-medium text-zinc-100 transition-colors hover:bg-white/[0.16] disabled:opacity-50"
+                    >
+                      저장
+                    </button>
                   </form>
                 )}
               </div>
-            )}
-
-            {authTab === "token" && (
+            ) : (
               <form
                 onSubmit={(e) => void handleConnectToken(e)}
-                className="space-y-2.5 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3.5"
+                className="flex flex-wrap items-center gap-2"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative min-w-[240px] flex-1">
-                    <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-                    <input
-                      type="password"
-                      value={personalToken}
-                      onChange={(e) => setPersonalToken(e.target.value)}
-                      placeholder="TickTick Personal API Token 입력..."
-                      className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 pl-8 pr-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={busyAction !== null}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 text-xs font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
-                  >
-                    {busyAction === "token-login" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    검증 후 연결
-                  </button>
+                <div className="relative min-w-[240px] flex-1">
+                  <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    type="password"
+                    value={personalToken}
+                    onChange={(e) => setPersonalToken(e.target.value)}
+                    placeholder="Personal API Token"
+                    className="h-8 w-full rounded-lg border border-white/[0.08] bg-zinc-950/90 pl-8 pr-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500/70 focus:outline-none"
+                  />
                 </div>
-                <p className="text-[11px] text-zinc-500">
-                  TickTick Web → Settings → Account → API Token에서 발급할 수 있으며, 입력한 토큰은
-                  즉시 API 검증 후 OS Keyring에 저장됩니다.
-                </p>
+                <button
+                  type="submit"
+                  disabled={busyAction !== null}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 disabled:opacity-50"
+                >
+                  {busyAction === "token-login" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>연결</span>
+                </button>
               </form>
             )}
           </div>
@@ -610,10 +551,10 @@ export function TickTickView({
 
         {/* Error Banner */}
         {(actionError || status?.lastSyncError) && (
-          <div className="flex items-start justify-between gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-            <span className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
-              <span>{actionError ?? status?.lastSyncError}</span>
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 ring-1 ring-inset ring-rose-500/25">
+            <span className="flex min-w-0 items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+              <span className="truncate">{actionError ?? status?.lastSyncError}</span>
             </span>
             {actionError && (
               <button
@@ -628,24 +569,26 @@ export function TickTickView({
         )}
       </div>
 
-      {/* Cached Projects & Tasks Explorer */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
-        {/* Project Sidebar */}
-        <div className="space-y-1 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-2 md:col-span-4">
+      {/* Master-Detail Projects & Tasks Explorer */}
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
+        {/* Left Project Rail */}
+        <div className="space-y-0.5 md:col-span-3">
           <button
             type="button"
             onClick={() => setSelectedProjectId("all")}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition ${
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
               selectedProjectId === "all"
-                ? "bg-indigo-500/15 text-indigo-300"
-                : "text-zinc-300 hover:bg-zinc-800"
+                ? "bg-white/[0.08] text-zinc-100"
+                : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
             }`}
           >
             <span className="flex items-center gap-2">
-              <CheckSquare className="h-3.5 w-3.5" />
-              모든 태스크
+              <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+              <span>전체</span>
             </span>
-            <span className="font-mono text-[11px] text-zinc-400">{visiblePool.length}</span>
+            <span className="font-mono text-[11px] tabular-nums text-zinc-500">
+              {visiblePool.length}
+            </span>
           </button>
 
           {projects.map((project) => {
@@ -655,24 +598,24 @@ export function TickTickView({
                 key={project.id}
                 type="button"
                 onClick={() => setSelectedProjectId(project.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition ${
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                   active
-                    ? "bg-indigo-500/15 text-indigo-200"
-                    : "text-zinc-300 hover:bg-zinc-800"
+                    ? "bg-white/[0.08] text-zinc-100"
+                    : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-2">
                   {project.isInbox ? (
-                    <Inbox className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                    <Inbox className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                   ) : (
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      className="h-2 w-2 shrink-0 rounded-full"
                       style={{ backgroundColor: project.color ?? "#6366f1" }}
                     />
                   )}
                   <span className="truncate">{project.name}</span>
                 </span>
-                <span className="font-mono text-[11px] text-zinc-500">
+                <span className="font-mono text-[11px] tabular-nums text-zinc-500">
                   {countByProject.get(project.id) ?? 0}
                 </span>
               </button>
@@ -680,16 +623,62 @@ export function TickTickView({
           })}
         </div>
 
-        {/* Task List */}
-        <div className="md:col-span-8">
+        {/* Right Task Workspace */}
+        <div className="space-y-3 md:col-span-9">
+          {/* Task Filter Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="태스크 검색..."
+                className="h-8 w-full rounded-lg border border-white/[0.07] bg-white/[0.03] pl-8 pr-7 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500/60 focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCompleted((v) => !v)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${
+                showCompleted
+                  ? "bg-indigo-500/15 text-indigo-300 ring-1 ring-inset ring-indigo-500/30"
+                  : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300"
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>완료 포함</span>
+            </button>
+          </div>
+
           {filteredTasks.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/40 p-10 text-center text-xs text-zinc-400">
-              {connected
-                ? "표시할 태스크가 없습니다. 상단의 [지금 Pull] 버튼으로 최신 태스크를 불러오세요."
-                : "표시할 캐시 태스크가 없습니다. TickTick 계정을 연결해 프로젝트와 태스크를 동기화하세요."}
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] py-14 text-center">
+              <CheckSquare className="h-5 w-5 text-zinc-600" />
+              <p className="mt-2.5 text-xs font-medium text-zinc-500">태스크 없음</p>
+              {connected && (
+                <button
+                  type="button"
+                  disabled={busyAction !== null}
+                  onClick={() => void handlePull()}
+                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.1]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Pull</span>
+                </button>
+              )}
             </div>
           ) : (
-            <ul className="divide-y divide-zinc-800/70 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/50">
+            <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]">
               {filteredTasks.map((task) => {
                 const project = projectMap.get(task.projectId);
                 const dueLabel = formatDueDateShort(task.dueDate);
@@ -697,62 +686,66 @@ export function TickTickView({
                 return (
                   <li
                     key={task.id}
-                    className={`flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-zinc-800/40 ${
-                      isCompleted ? "opacity-60" : ""
+                    className={`group flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-white/[0.03] ${
+                      isCompleted ? "opacity-55" : ""
                     }`}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                         {isCompleted && (
                           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                         )}
                         <span
-                          className={`truncate text-sm font-medium ${
+                          className={`truncate text-[13.5px] font-medium ${
                             isCompleted ? "text-zinc-400 line-through" : "text-zinc-100"
                           }`}
                         >
                           {task.title}
                         </span>
-                        {project && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 text-[10px] text-zinc-300">
+
+                        {selectedProjectId === "all" && project && (
+                          <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-zinc-400">
                             <span
                               className="h-1.5 w-1.5 rounded-full"
                               style={{ backgroundColor: project.color ?? "#6366f1" }}
                             />
-                            {project.name}
+                            <span>{project.name}</span>
                           </span>
                         )}
+
                         {dueLabel && (
-                          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-zinc-400">
-                            <Calendar className="h-2.5 w-2.5 text-zinc-500" />
-                            {dueLabel}
+                          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10.5px] tabular-nums text-zinc-500">
+                            <Calendar className="h-3 w-3" />
+                            <span>{dueLabel}</span>
                           </span>
+                        )}
+
+                        {task.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {task.tags.map((t) => (
+                              <span
+                                key={t}
+                                className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-400"
+                              >
+                                #{t}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
+
                       {task.content && (
-                        <p className="mt-0.5 truncate text-xs text-zinc-500">{task.content}</p>
-                      )}
-                      {task.tags.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {task.tags.map((t) => (
-                            <span
-                              key={t}
-                              className="inline-flex items-center gap-0.5 rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-300"
-                            >
-                              <TagIcon className="h-2.5 w-2.5 text-zinc-500" />#{t}
-                            </span>
-                          ))}
-                        </div>
+                        <p className="truncate text-xs text-zinc-500">{task.content}</p>
                       )}
                     </div>
 
                     <button
                       type="button"
                       onClick={() => void onStartTaskTimer(task)}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-500/15 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500 hover:text-white"
+                      title="타이머 시작"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/12 text-indigo-300 transition-all hover:bg-indigo-500 hover:text-white group-hover:bg-indigo-500/25"
                     >
-                      <Play className="h-3 w-3 fill-current" />
-                      타이머 시작
+                      <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
                     </button>
                   </li>
                 );

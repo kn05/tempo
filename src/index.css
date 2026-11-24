@@ -3,3 +3,49 @@
 :root {
   color-scheme: dark;
 }
+
+html,
+body,
+#root {
+  height: 100%;
+  background-color: #09090b;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Native-feeling ultra-subtle dark scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Clean time/date input calendar/clock icon contrast in dark mode */
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.65);
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 120ms ease;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

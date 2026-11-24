@@ -162,29 +162,37 @@ export function MiniTimer() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col justify-between overflow-hidden rounded-xl border border-zinc-700/90 bg-zinc-950/95 text-zinc-100 shadow-2xl select-none">
+    <div
+      className={`relative flex h-screen w-screen flex-col justify-between overflow-hidden rounded-xl border bg-[#0d0d11]/98 text-zinc-100 shadow-2xl select-none ${
+        runningEntry ? "border-rose-500/30" : "border-white/[0.1]"
+      }`}
+    >
+      {runningEntry && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400/60 to-transparent" />
+      )}
+
       {/* Compact Frameless Drag Bar */}
       <div
         data-tauri-drag-region
-        className="flex h-7 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-2.5"
+        className="flex h-7 items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-2.5"
       >
         <div
           data-tauri-drag-region
           className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-zinc-400"
         >
-          <GripHorizontal className="pointer-events-none h-3.5 w-3.5 text-zinc-600" />
+          <GripHorizontal className="pointer-events-none h-3 w-3 text-zinc-600" />
           <span
-            className={`h-2 w-2 rounded-full ${
+            className={`h-1.5 w-1.5 rounded-full ${
               runningEntry
-                ? "animate-pulse bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]"
+                ? "animate-pulse bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
                 : "bg-zinc-600"
             }`}
           />
-          <span data-tauri-drag-region className="font-semibold text-zinc-200">
+          <span data-tauri-drag-region className="font-semibold tracking-tight text-zinc-200">
             tempo
           </span>
           {currentProject && (
-            <span className="inline-flex items-center gap-1 truncate rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-300">
+            <span className="inline-flex items-center gap-1 truncate rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-300">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: currentProject.color ?? "#6366f1" }}
@@ -199,10 +207,10 @@ export function MiniTimer() {
             type="button"
             onClick={() => void handleTogglePin()}
             title={alwaysOnTop ? "항상 위 해제" : "항상 위 고정"}
-            className={`rounded p-1 transition ${
+            className={`rounded p-1 transition-colors ${
               alwaysOnTop
                 ? "text-indigo-400 hover:bg-indigo-500/15"
-                : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                : "text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
             }`}
           >
             {alwaysOnTop ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}
@@ -210,16 +218,16 @@ export function MiniTimer() {
           <button
             type="button"
             onClick={() => void focusMainWindow()}
-            title="메인 창 열기"
-            className="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
+            title="메인 창"
+            className="rounded p-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
           >
             <Maximize2 className="h-3 w-3" />
           </button>
           <button
             type="button"
             onClick={() => void closeMiniTimer()}
-            title="미니 타이머 닫기"
-            className="rounded p-1 text-zinc-400 transition hover:bg-rose-500/20 hover:text-rose-300"
+            title="닫기"
+            className="rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300"
           >
             <X className="h-3 w-3" />
           </button>
@@ -229,7 +237,7 @@ export function MiniTimer() {
       {/* Main Compact Controls */}
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="flex flex-1 items-center gap-2 px-3 py-2"
+        className="flex flex-1 items-center gap-2.5 px-3 py-2"
       >
         <input
           ref={inputRef}
@@ -239,13 +247,13 @@ export function MiniTimer() {
           onBlur={() => {
             if (runningEntry) void commitRunningDescription();
           }}
-          placeholder="빠른 작업 입력 (@프로젝트 #태그)..."
-          className="h-8 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-2.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+          placeholder="작업 입력..."
+          className="h-8 min-w-0 flex-1 bg-transparent text-[13px] font-medium text-zinc-100 placeholder:font-normal placeholder:text-zinc-500 focus:outline-none"
         />
 
         <span
-          className={`w-[68px] shrink-0 text-right font-mono text-sm font-semibold tabular-nums ${
-            runningEntry ? "text-rose-300" : "text-zinc-300"
+          className={`w-[70px] shrink-0 text-right font-mono text-[15px] font-semibold tabular-nums ${
+            runningEntry ? "text-rose-300" : "text-zinc-400"
           }`}
         >
           {formatDurationHms(elapsedMs)}
@@ -258,14 +266,14 @@ export function MiniTimer() {
           aria-label={runningEntry ? "Stop timer" : "Start timer"}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white shadow transition disabled:opacity-50 ${
             runningEntry
-              ? "bg-rose-500 hover:bg-rose-400"
-              : "bg-indigo-500 hover:bg-indigo-400"
+              ? "bg-rose-500 shadow-rose-500/25 hover:bg-rose-400"
+              : "bg-indigo-500 shadow-indigo-500/20 hover:bg-indigo-400"
           }`}
         >
           {runningEntry ? (
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <Square className="h-3 w-3 fill-current" />
           ) : (
-            <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+            <Play className="ml-0.5 h-3 w-3 fill-current" />
           )}
         </button>
       </form>
