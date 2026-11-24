@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tempo-core",
+    "src-tauri",
+]
+# Keep Linux headless `cargo test` / `cargo check` working without GTK/WebKit2GTK.
+# Tauri builds invoke Cargo directly for `src-tauri`.
+default-members = ["crates/tempo-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["tempo contributors"]

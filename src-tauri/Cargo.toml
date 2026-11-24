@@ -1,0 +1,21 @@
+[package]
+name = "tempo-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lightweight local-first time tracker with TickTick sync"
+
+[lib]
+name = "tempo_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+tempo-core = { path = "../crates/tempo-core" }
