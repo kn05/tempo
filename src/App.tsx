@@ -533,7 +533,7 @@ export default function App() {
     : "";
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="flex h-full w-full overflow-hidden overscroll-none bg-[#09090b] text-zinc-100">
       <Sidebar
         activeTab={activeTab}
         onSelect={setActiveTab}
@@ -558,7 +558,7 @@ export default function App() {
         />
 
         <main
-          className={`min-h-0 flex-1 ${
+          className={`min-h-0 flex-1 overflow-x-hidden overscroll-none ${
             activeTab === "timeline"
               ? "overflow-y-auto px-6 py-4 lg:overflow-hidden"
               : "overflow-y-auto px-6 py-6"

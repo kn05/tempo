@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
+use tauri::window::Color;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_opener::OpenerExt;
 use tempo_core::{
@@ -29,6 +30,11 @@ pub const EVENT_FOCUS_QUICK_ENTRY: &str = "tempo://focus-quick-entry";
 pub const EVENT_TICKTICK_CHANGED: &str = "tempo://ticktick-changed";
 
 pub const MINI_WINDOW_LABEL: &str = "mini";
+
+/// Must stay identical to `app.windows[0].additionalBrowserArgs` in `tauri.conf.json`
+/// so all windows sharing the WebView2 data directory initialize cleanly on Windows.
+const WINDOWS_WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,ElasticOverscroll,OverscrollHistoryNavigation";
+const WINDOW_BG_COLOR: Color = Color(9, 9, 11, 255);
 
 pub(crate) struct AppState {
     pub db: Arc<Database>,
@@ -79,6 +85,8 @@ pub(crate) fn open_mini_timer_window(app: &AppHandle) -> Result<(), String> {
     .inner_size(360.0, 96.0)
     .resizable(false)
     .decorations(false)
+    .background_color(WINDOW_BG_COLOR)
+    .additional_browser_args(WINDOWS_WEBVIEW_ARGS)
     .always_on_top(always_on_top)
     .skip_taskbar(true)
     .build()

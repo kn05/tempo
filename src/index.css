@@ -4,18 +4,57 @@
   color-scheme: dark;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  background-color: #09090b;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-}
+@layer base {
+  html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background-color: #09090b;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
 
-/* Native-feeling ultra-subtle dark scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  body,
+  #root {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+    background-color: #09090b;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Native-feeling ultra-subtle dark scrollbars + no rubber-band/ghost-drag */
+  * {
+    overscroll-behavior: none;
+    -webkit-user-drag: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  }
+
+  /* Preserve text selection where users edit or copy values */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  textarea,
+  [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+
+  code,
+  pre,
+  .select-text {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
 *::-webkit-scrollbar {

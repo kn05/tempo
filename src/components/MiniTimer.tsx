@@ -163,7 +163,7 @@ export function MiniTimer() {
 
   return (
     <div
-      className={`relative flex h-screen w-screen flex-col justify-between overflow-hidden rounded-xl border bg-[#0d0d11]/98 text-zinc-100 shadow-2xl select-none ${
+      className={`relative flex h-full w-full flex-col justify-between overflow-hidden overscroll-none rounded-xl border bg-[#0d0d11]/98 text-zinc-100 shadow-2xl select-none touch-none ${
         runningEntry ? "border-rose-500/30" : "border-white/[0.1]"
       }`}
     >
@@ -182,7 +182,7 @@ export function MiniTimer() {
         >
           <GripHorizontal className="pointer-events-none h-3 w-3 text-zinc-600" />
           <span
-            className={`h-1.5 w-1.5 rounded-full ${
+            className={`pointer-events-none h-1.5 w-1.5 rounded-full ${
               runningEntry
                 ? "animate-pulse bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
                 : "bg-zinc-600"

@@ -32,7 +32,7 @@ export function Sidebar({
   const unsyncedCount = pendingCount + failedCount;
 
   return (
-    <aside className="flex w-48 shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0f]">
+    <aside className="flex w-48 shrink-0 touch-none flex-col border-r border-white/[0.06] bg-[#0c0c0f]">
       {/* Brand header aligned with TimerBar height */}
       <div className="flex h-14 items-center gap-2.5 border-b border-white/[0.06] px-4">
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-indigo-400 to-indigo-600 text-xs font-bold text-white shadow-sm shadow-indigo-500/25">

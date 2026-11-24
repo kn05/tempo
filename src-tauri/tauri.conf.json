@@ -18,7 +18,9 @@
         "height": 740,
         "minWidth": 820,
         "minHeight": 540,
-        "resizable": true
+        "resizable": true,
+        "backgroundColor": "#09090b",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,ElasticOverscroll,OverscrollHistoryNavigation"
       }
     ],
     "security": {

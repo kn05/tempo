@@ -679,7 +679,7 @@ export function TimelineView({
                 if (hoveredState) setHoveredState(null);
               }}
               onWheel={handleTimelineWheel}
-              className="relative h-full overflow-y-auto"
+              className="relative h-full overflow-x-hidden overflow-y-auto overscroll-none"
             >
               <div
                 className="relative grid grid-cols-[56px_1fr_1fr]"
@@ -1107,7 +1107,7 @@ export function TimelineView({
         </div>
 
         {/* Right Contextual Rail: Selection Converter | Entry Editor | Visual Day Overview */}
-        <aside className="w-full shrink-0 lg:min-h-0 lg:w-72 lg:overflow-y-auto xl:w-80">
+        <aside className="w-full shrink-0 lg:min-h-0 lg:w-72 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-none xl:w-80">
           {activeSelectionRange ? (
             <div className="sticky top-0 overflow-hidden rounded-xl border border-indigo-500/35 bg-[#121218] shadow-2xl">
               <div className="h-[2px] w-full bg-gradient-to-r from-indigo-500 via-indigo-400 to-sky-400" />
